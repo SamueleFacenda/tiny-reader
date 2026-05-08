@@ -1,5 +1,5 @@
 // --- BOARD SPECIFICATIONS ---
-pcb_w = 66.0;         // PCB Width
+pcb_w = 63.3;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
 pcb_h = 12.5;         // PCB Height
 
@@ -11,10 +11,16 @@ bezel_thickness = 0.8; // Front wall thickness
 
 // --- USB-C POSITION ---
 // X position is calculated from the left edge (bezel_l)
-usb_x_pos = 32.0 + bezel_tb;   
+usb_x_pos = 30.0;   
 usb_from_top = 5.0;
 usb_w = 11.0;
 usb_h = 4.5;
+
+// Buttons position (on the left side, centered vertically)
+buttons_w = 30.0; // width with some margin
+buttons_from_bezel = 1.6; // distance from the top (without bezel) to buttons top
+buttons_h = 3.5; // height of the buttons area
+
 
 // --- ADJUSTMENT PARAMETERS (SNUG FIT) ---
 wall = 2.0;           // Wall thickness
@@ -58,6 +64,10 @@ module main_body() {
         // Window Width = PCB_W - (Left Bezel + Right Bezel)
         translate([wall + bezel_l, wall + bezel_tb, total_h - bezel_thickness - 1])
             cube([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb, bezel_thickness + 2]);
+
+        // Buttons Cutout (on the left side, centered vertically)
+        translate([-1, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            cube([wall + 2, buttons_w, buttons_h]);
 
         // USB-C Cutout
         translate([wall + usb_x_pos - usb_w/2, total_d - wall - 1, total_h - bezel_thickness - usb_from_top - usb_h/2])
