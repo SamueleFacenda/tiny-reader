@@ -66,7 +66,13 @@ module main_body() {
         // Screen Window (Adjusted for Left and Right)
         // Window Width = PCB_W - (Left Bezel + Right Bezel)
         translate([wall + bezel_l, wall + bezel_tb, total_h - bezel_thickness - ZERO_GAP])
-            cube([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb, bezel_thickness + 2*ZERO_GAP]);
+            hull() {
+                cube([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb, NON_ZERO_GAP]);
+                // cube([usb_w - 2*usb_corner_r, NON_ZERO_GAP, usb_h - 2*usb_corner_r]);
+                translate([-bezel_thickness, -bezel_thickness, bezel_thickness + 2*ZERO_GAP - NON_ZERO_GAP])
+                    cube([pcb_w - (bezel_l + bezel_r) + 2*bezel_thickness, pcb_d - 2*bezel_tb + 2*bezel_thickness, NON_ZERO_GAP]);
+                    // cube([usb_w - 2*usb_corner_r + 2*wall, NON_ZERO_GAP, usb_h - 2*usb_corner_r + 2*wall]);
+            }
 
         // Buttons Cutout (on the left side, centered vertically)
         translate([-ZERO_GAP, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
