@@ -6,12 +6,12 @@ pcb_h = 12.5;         // PCB Height
 // --- FRONT BEZEL (SCREEN EDGES) ---
 bezel_l = 6.0;         // Left bezel
 bezel_r = 8.0;         // Right bezel
-bezel_tb = 2.5;        // Top/Bottom bezel
+bezel_tb = 3.5;        // Top/Bottom bezel
 bezel_thickness = 0.8; // Front wall thickness
 
 // --- USB-C POSITION ---
 // X position is calculated from the left edge (bezel_l)
-usb_x_pos = 30.0;   
+usb_x_pos = 32.0;   
 usb_from_top = 5.0;
 usb_w = 11.0;
 usb_h = 4.5;
