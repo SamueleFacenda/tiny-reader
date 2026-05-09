@@ -1,3 +1,5 @@
+ZERO_GAP = 0.01; // Put at zero in rendering, used to prevent zero thickness issues in difference() operations during preview
+NON_ZERO_GAP = 0.01; // Small but non zero value
 // --- BOARD SPECIFICATIONS ---
 pcb_w = 63.3;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
@@ -15,6 +17,7 @@ usb_x_pos = 32.0;
 usb_from_top = 5.0;
 usb_w = 11.0;
 usb_h = 4.5;
+usb_corner_r = 1.5;
 
 // Buttons position (on the left side, centered vertically)
 buttons_w = 30.0; // width with some margin
@@ -57,21 +60,39 @@ module main_body() {
         }
 
         // PCB Cavity
-        translate([wall, wall, -1])
-            cube([pcb_w + gap, pcb_d + gap, total_h - bezel_thickness + 1]);
+        translate([wall, wall, -ZERO_GAP])
+            cube([pcb_w + gap, pcb_d + gap, total_h - bezel_thickness + ZERO_GAP*2]);
 
         // Screen Window (Adjusted for Left and Right)
         // Window Width = PCB_W - (Left Bezel + Right Bezel)
-        translate([wall + bezel_l, wall + bezel_tb, total_h - bezel_thickness - 1])
-            cube([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb, bezel_thickness + 2]);
+        translate([wall + bezel_l, wall + bezel_tb, total_h - bezel_thickness - ZERO_GAP])
+            cube([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb, bezel_thickness + 2*ZERO_GAP]);
 
         // Buttons Cutout (on the left side, centered vertically)
-        translate([-1, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
-            cube([wall + 2, buttons_w, buttons_h]);
+        translate([-ZERO_GAP, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            cube([wall + 2*ZERO_GAP, buttons_w, buttons_h]);
 
         // USB-C Cutout
-        translate([wall + usb_x_pos - usb_w/2, total_d - wall - 1, total_h - bezel_thickness - usb_from_top - usb_h/2])
-            cube([usb_w, wall + 2, usb_h]);
+        translate([wall + usb_x_pos - usb_w/2, total_d - wall - ZERO_GAP, total_h - bezel_thickness - usb_from_top - usb_h/2])
+            minkowski() {
+                hull() {
+                    cube([usb_w - 2*usb_corner_r, NON_ZERO_GAP, usb_h - 2*usb_corner_r]);
+                    translate([-wall, wall + 2*ZERO_GAP - NON_ZERO_GAP, -wall])
+                        cube([usb_w - 2*usb_corner_r + 2*wall, NON_ZERO_GAP, usb_h - 2*usb_corner_r + 2*wall]);
+                }
+
+                //cube([usb_w - 2*usb_corner_r, wall + 2, usb_h - 2*usb_corner_r]);
+                // rotate([90, 0, 0])
+                //     cylinder(h=wall + 2*ZERO_GAP, r=usb_corner_r);   
+
+                rotate([90, 0, 0])
+                    hull() {
+                        cylinder(h=NON_ZERO_GAP, r=usb_corner_r);
+                        translate([-wall, wall + 2*ZERO_GAP - NON_ZERO_GAP, -wall])
+                            cylinder(h=NON_ZERO_GAP, r=usb_corner_r);
+                    }
+                    
+            }
             
         // Pin Holes
         translate([0, 0, -0.1])
