@@ -1,5 +1,10 @@
-ZERO_GAP = 0.01; // Put at zero in rendering, used to prevent zero thickness issues in difference() operations during preview
-NON_ZERO_GAP = 0.01; // Small but non zero value
+ZERO_GAP = $preview ? 0.01 : 0; // Put at zero in rendering, used to prevent zero thickness issues in difference() operations during preview
+EPS = 0.01; // Small but non zero value
+
+rounded_trapezoid(w1, w2, h, r1, r2=r1, off=h) {
+    
+}
+
 // --- BOARD SPECIFICATIONS ---
 pcb_w = 63.3;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
@@ -67,11 +72,11 @@ module main_body() {
         // Window Width = PCB_W - (Left Bezel + Right Bezel)
         translate([wall + bezel_l, wall + bezel_tb, total_h - bezel_thickness - ZERO_GAP])
             hull() {
-                cube([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb, NON_ZERO_GAP]);
-                // cube([usb_w - 2*usb_corner_r, NON_ZERO_GAP, usb_h - 2*usb_corner_r]);
-                translate([-bezel_thickness, -bezel_thickness, bezel_thickness + 2*ZERO_GAP - NON_ZERO_GAP])
-                    cube([pcb_w - (bezel_l + bezel_r) + 2*bezel_thickness, pcb_d - 2*bezel_tb + 2*bezel_thickness, NON_ZERO_GAP]);
-                    // cube([usb_w - 2*usb_corner_r + 2*wall, NON_ZERO_GAP, usb_h - 2*usb_corner_r + 2*wall]);
+                cube([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb, EPS]);
+                // cube([usb_w - 2*usb_corner_r, EPS, usb_h - 2*usb_corner_r]);
+                translate([-bezel_thickness, -bezel_thickness, bezel_thickness + 2*ZERO_GAP - EPS])
+                    cube([pcb_w - (bezel_l + bezel_r) + 2*bezel_thickness, pcb_d - 2*bezel_tb + 2*bezel_thickness, EPS]);
+                    // cube([usb_w - 2*usb_corner_r + 2*wall, EPS, usb_h - 2*usb_corner_r + 2*wall]);
             }
 
         // Buttons Cutout (on the left side, centered vertically)
@@ -82,9 +87,9 @@ module main_body() {
         translate([wall + usb_x_pos - usb_w/2, total_d - wall - ZERO_GAP, total_h - bezel_thickness - usb_from_top - usb_h/2])
             minkowski() {
                 hull() {
-                    cube([usb_w - 2*usb_corner_r, NON_ZERO_GAP, usb_h - 2*usb_corner_r]);
-                    translate([-wall, wall + 2*ZERO_GAP - NON_ZERO_GAP, -wall])
-                        cube([usb_w - 2*usb_corner_r + 2*wall, NON_ZERO_GAP, usb_h - 2*usb_corner_r + 2*wall]);
+                    cube([usb_w - 2*usb_corner_r, EPS, usb_h - 2*usb_corner_r]);
+                    translate([-wall, wall + 2*ZERO_GAP - EPS, -wall])
+                        cube([usb_w - 2*usb_corner_r + 2*wall, EPS, usb_h - 2*usb_corner_r + 2*wall]);
                 }
 
                 //cube([usb_w - 2*usb_corner_r, wall + 2, usb_h - 2*usb_corner_r]);
@@ -93,9 +98,9 @@ module main_body() {
 
                 rotate([90, 0, 0])
                     hull() {
-                        cylinder(h=NON_ZERO_GAP, r=usb_corner_r);
-                        translate([-wall, wall + 2*ZERO_GAP - NON_ZERO_GAP, -wall])
-                            cylinder(h=NON_ZERO_GAP, r=usb_corner_r);
+                        cylinder(h=EPS, r=usb_corner_r);
+                        translate([-wall, wall + 2*ZERO_GAP - EPS, -wall])
+                            cylinder(h=EPS, r=usb_corner_r);
                     }
                     
             }
