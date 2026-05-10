@@ -47,7 +47,7 @@ buttons_h = 3.5; // height of the buttons area
 // --- ADJUSTMENT PARAMETERS (SNUG FIT) ---
 wall = 2.0;           // Wall thickness
 gap = 0.8;            // Total internal clearance (for a tight fit)
-corner_r = 4.0;       // Corner radius
+corner_r = 3.0;       // Corner radius
 pin_dia = 3.6;        // Pin diameter
 pin_h = 5.5;          // Pin height
 tolerance = 0.25;     // Tolerance for pins (adjust as needed)
@@ -74,11 +74,20 @@ module main_body() {
             #import("output.stl");
     difference() {
         // External Block
-        hull() {
-            translate([corner_r, corner_r, 0]) cylinder(total_h, r=corner_r);
-            translate([total_w-corner_r, corner_r, 0]) cylinder(total_h, r=corner_r);
-            translate([total_w-corner_r, total_d-corner_r, 0]) cylinder(total_h, r=corner_r);
-            translate([corner_r, total_d-corner_r, 0]) cylinder(total_h, r=corner_r);
+        translate([corner_r, corner_r, 0])
+        minkowski() {
+            cube([total_w - 2*corner_r, total_d - 2*corner_r, total_h - corner_r]);
+            // hull() {
+            //     translate([corner_r, corner_r, 0]) cylinder(total_h, r=corner_r);
+            //     translate([total_w-corner_r, corner_r, 0]) cylinder(total_h, r=corner_r);
+            //     translate([total_w-corner_r, total_d-corner_r, 0]) cylinder(total_h, r=corner_r);
+            //     translate([corner_r, total_d-corner_r, 0]) cylinder(total_h, r=corner_r);
+            // }
+            difference() { // half sphere
+                sphere(r = corner_r);
+                translate([-corner_r, -corner_r, -2*corner_r]) 
+                    cube([2*corner_r, 2*corner_r, 2*corner_r]); 
+            }
         }
 
         // PCB Cavity
