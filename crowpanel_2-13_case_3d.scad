@@ -25,22 +25,22 @@ pcb_d = 31.0;         // PCB Depth
 pcb_h = 12.5;         // PCB Height
 
 // --- FRONT BEZEL (SCREEN EDGES) ---
-bezel_l = 6.0;         // Left bezel
-bezel_r = 8.0;         // Right bezel
+bezel_l = 4.7;         // Left bezel
+bezel_r = 10.0;         // Right bezel
 bezel_tb = 3.5;        // Top/Bottom bezel
 bezel_thickness = 0.8; // Front wall thickness
 
 // --- USB-C POSITION ---
 // X position is calculated from the left edge (bezel_l)
-usb_x_pos = 32.0;   
-usb_from_top = 5.0;
+usb_x_pos = 32.0;
+usb_from_top = 4.1;
 usb_w = 11.0;
 usb_h = 4.5;
 usb_corner_r = 1.5;
 
 // Buttons position (on the left side, centered vertically)
 buttons_w = 30.0; // width with some margin
-buttons_from_bezel = 1.6; // distance from the top (without bezel) to buttons top
+buttons_from_bezel = 2.5; // distance from the top (without bezel) to buttons top
 buttons_h = 3.5; // height of the buttons area
 
 
@@ -69,6 +69,9 @@ module corners(offset_val = 2.2) {
 
 // --- MAIN BODY (CASE) ---
 module main_body() {
+    translate([31.6 + wall, 15.6 + wall, pcb_h])
+        rotate([90,0,90])
+            #import("output.stl");
     difference() {
         // External Block
         hull() {
@@ -86,7 +89,6 @@ module main_body() {
         // Window Width = PCB_W - (Left Bezel + Right Bezel)
         translate([wall + bezel_l, wall + bezel_tb, total_h - bezel_thickness])
             rounded_trapezoid([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb], bezel_thickness, bezel_thickness);
-
 
         // Buttons Cutout (on the left side, centered vertically)
         translate([wall, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel])
@@ -135,5 +137,6 @@ module back_cover() {
 // --- RENDER ---
 color("RoyalBlue") main_body();
 
+// translate([0, 0, -wall]) // fit check
 translate([0, -total_d - 10, 0]) 
     color("DimGray") back_cover();
