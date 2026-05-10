@@ -19,6 +19,18 @@ module rounded_trapezoid(w, h, r, r2 = -1, off = -1) {
         };
 }
 
+module rounded_cube(w, r) {
+    translate([r, r, 0])
+        minkowski() {
+            cube([w[0] - 2*r, w[1] - 2*r, w[2] - r]);
+            difference() { // half sphere
+                sphere(r = r);
+                translate([-r, -r, -2*r]) 
+                    cube([2*r, 2*r, 2*r]); 
+            }
+        };
+}
+
 // --- BOARD SPECIFICATIONS ---
 pcb_w = 63.3;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
@@ -52,6 +64,9 @@ pin_dia = 3.6;        // Pin diameter
 pin_h = 5.5;          // Pin height
 tolerance = 0.25;     // Tolerance for pins (adjust as needed)
 
+// --- BASE SETTINGS ---
+base_h = corner_r;
+
 $fn = 60;
 
 // Total External Dimensions
@@ -74,21 +89,7 @@ module main_body() {
             #import("output.stl");
     difference() {
         // External Block
-        translate([corner_r, corner_r, 0])
-        minkowski() {
-            cube([total_w - 2*corner_r, total_d - 2*corner_r, total_h - corner_r]);
-            // hull() {
-            //     translate([corner_r, corner_r, 0]) cylinder(total_h, r=corner_r);
-            //     translate([total_w-corner_r, corner_r, 0]) cylinder(total_h, r=corner_r);
-            //     translate([total_w-corner_r, total_d-corner_r, 0]) cylinder(total_h, r=corner_r);
-            //     translate([corner_r, total_d-corner_r, 0]) cylinder(total_h, r=corner_r);
-            // }
-            difference() { // half sphere
-                sphere(r = corner_r);
-                translate([-corner_r, -corner_r, -2*corner_r]) 
-                    cube([2*corner_r, 2*corner_r, 2*corner_r]); 
-            }
-        }
+        rounded_cube([total_w, total_d, total_h], corner_r);
 
         // PCB Cavity
         translate([wall, wall, -ZERO_GAP])
@@ -121,31 +122,28 @@ module main_body() {
 
 // --- BACK COVER ---
 module back_cover() {
-    union() {
-        // Base
-        hull() {
-            translate([corner_r, corner_r, 0]) cylinder(wall, r=corner_r);
-            translate([total_w-corner_r, corner_r, 0]) cylinder(wall, r=corner_r);
-            translate([total_w-corner_r, total_d-corner_r, 0]) cylinder(wall, r=corner_r);
-            translate([corner_r, total_d-corner_r, 0]) cylinder(wall, r=corner_r);
-        }
-        
-        // Locking Lip (Male)
-        translate([wall/2 + tolerance, wall/2 + tolerance, wall])
-            cube([total_w - wall - 2*tolerance, total_d - wall - 2*tolerance, 1.0]);
+    translate([0,0,base_h])
+        union() {
+            // Base
+            translate([0, total_d, 0])
+                rotate([180,0,0])
+                    rounded_cube([total_w, total_d, base_h+EPS], base_h);
+            
+            // Locking Lip (Male)
+            translate([wall/2 + tolerance, wall/2 + tolerance, 0])
+                cube([total_w - wall - 2*tolerance, total_d - wall - 2*tolerance, 1.0]);
 
-        // Pins with spherical snaps
-        translate([0, 0, wall])
+            // Pins with spherical snaps
             corners(1.8) {
                 cylinder(pin_h, d=pin_dia);
                 translate([0,0, pin_h]) sphere(d=pin_dia + 0.1); 
             }
-    }
+        }
 }
 
 // --- RENDER ---
 color("RoyalBlue") main_body();
 
-// translate([0, 0, -wall]) // fit check
+// translate([0, 0, -corner_r]) // fit check
 translate([0, -total_d - 10, 0]) 
     color("DimGray") back_cover();
