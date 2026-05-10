@@ -1,4 +1,4 @@
-ZERO_GAP = $preview ? 0.01 : 0; // Put at zero in rendering, used to prevent zero thickness issues in difference() operations during preview
+ZERO_GAP = $preview ? 0.1 : 0; // Put at zero in rendering, used to prevent zero thickness issues in difference() operations during preview
 EPS = 0.01; // Small but non zero value
 
 module rounded_trapezoid(w, h, r, r2 = -1, off = -1) {
@@ -89,8 +89,9 @@ module main_body() {
 
 
         // Buttons Cutout (on the left side, centered vertically)
-        translate([-ZERO_GAP, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
-            cube([wall + 2*ZERO_GAP, buttons_w, buttons_h]);
+        translate([wall, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel])
+            rotate([-90, 0, 90])
+                rounded_trapezoid([buttons_w, buttons_h], wall, buttons_h/2 - EPS);
 
         // USB-C Cutout
         translate([wall + usb_x_pos - usb_w/2, total_d -wall, total_h - bezel_thickness - usb_from_top + usb_h/2])
