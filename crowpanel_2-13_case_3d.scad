@@ -1,15 +1,18 @@
 ZERO_GAP = $preview ? 0.01 : 0; // Put at zero in rendering, used to prevent zero thickness issues in difference() operations during preview
 EPS = 0.01; // Small but non zero value
 
-module rounded_trapezoid(w, h, r, off) {
+module rounded_trapezoid(w, h, r, r2, off) {
     translate([r, r, -ZERO_GAP])
-        minkowski() {
-            hull() {
+        hull() {
+            minkowski() {
                 cube([w[0] - 2*r, w[1] - 2*r, EPS]);
-                translate([-off, -off, h + 2*ZERO_GAP - 2*EPS])
-                    cube([w[0] - 2*r + 2*off, w[1] - 2*r + 2*off, EPS]);
+                cylinder(h=EPS, r=r);
             }
-            cylinder(h=EPS, r=r);
+            translate([-off + (r2 - r), -off + (r2 - r), h + 2*ZERO_GAP - 2*EPS])
+                minkowski() {
+                    cube([w[0] - 2*r2 + 2*off, w[1] - 2*r2 + 2*off, EPS]);
+                    cylinder(h=EPS, r=r2);
+                }
         };
 }
 
@@ -79,7 +82,7 @@ module main_body() {
         // Screen Window (Adjusted for Left and Right)
         // Window Width = PCB_W - (Left Bezel + Right Bezel)
         translate([wall + bezel_l, wall + bezel_tb, total_h - bezel_thickness])
-            rounded_trapezoid([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb], bezel_thickness, bezel_thickness, bezel_thickness);
+            rounded_trapezoid([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb], bezel_thickness, bezel_thickness, bezel_thickness*2, bezel_thickness);
 
 
         // Buttons Cutout (on the left side, centered vertically)
@@ -89,7 +92,7 @@ module main_body() {
         // USB-C Cutout
         translate([wall + usb_x_pos - usb_w/2, total_d -wall, total_h - bezel_thickness - usb_from_top + usb_h/2])
             rotate([-90, 0, 0])
-                rounded_trapezoid([usb_w, usb_h], wall, usb_corner_r, wall);
+                rounded_trapezoid([usb_w, usb_h], wall, usb_corner_r, usb_corner_r + wall, wall);
     
         // Pin Holes
         translate([0, 0, -0.1])
