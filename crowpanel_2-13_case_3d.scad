@@ -31,10 +31,22 @@ module rounded_cube(w, r) {
         };
 }
 
+module corners(offset_val = 2.2) {
+    inset = wall + offset_val;
+    translate([inset, inset, 0]) children();
+    translate([total_w - inset, inset, 0]) children();
+    translate([total_w - inset, total_d - inset, 0]) children();
+    translate([inset, total_d - inset, 0]) children();
+}
+
 // --- BOARD SPECIFICATIONS ---
 pcb_w = 63.3;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
-pcb_h = 12.5;         // PCB Height
+// pcb_h = 10.7; // real height
+// pcb_h = 10.7 + 6.0;    // battery plus full pcb
+pcb_h = 5.7 + 6.0;    // battery plus pcb with ports removed
+pcb_r_h = 6.0; // Height of the buttons side
+pcb_l_h = 2.5; // Height of the left side
 
 // --- FRONT BEZEL (SCREEN EDGES) ---
 bezel_l = 4.7;         // Left bezel
@@ -61,7 +73,7 @@ wall = 2.0;           // Wall thickness
 gap = 0.8;            // Total internal clearance (for a tight fit)
 corner_r = 3.0;       // Corner radius
 pin_dia = 3.6;        // Pin diameter
-pin_h = 5.5;          // Pin height
+pin_h = pcb_h - pcb_r_h - pin_dia/2 - 0.1; // Pin height
 tolerance = 0.25;     // Tolerance for pins (adjust as needed)
 
 // --- BASE SETTINGS ---
@@ -72,21 +84,15 @@ $fn = 60;
 // Total External Dimensions
 total_w = pcb_w + 2*wall + gap;
 total_d = pcb_d + 2*wall + gap;
-total_h = pcb_h + bezel_thickness + 1.0; 
-
-module corners(offset_val = 2.2) {
-    inset = wall + offset_val;
-    translate([inset, inset, 0]) children();
-    translate([total_w - inset, inset, 0]) children();
-    translate([total_w - inset, total_d - inset, 0]) children();
-    translate([inset, total_d - inset, 0]) children();
-}
+total_h = pcb_h + bezel_thickness;
 
 // --- MAIN BODY (CASE) ---
 module main_body() {
-    translate([31.6 + wall, 15.6 + wall, pcb_h])
-        rotate([90,0,90])
-            #import("output.stl");
+    if ($preview) {
+        translate([31.6 + wall, 15.6 + wall, pcb_h - 0.9])
+            rotate([90,0,90])
+                #import("output.stl");
+    }
     difference() {
         // External Block
         rounded_cube([total_w, total_d, total_h], corner_r);
@@ -115,8 +121,8 @@ module main_body() {
             corners(1.8) cylinder(pin_h + 0.5, d=pin_dia + tolerance);
             
         // Alignment Recess (prevents the cover from sliding)
-        translate([wall/2, wall/2, -0.1])
-            cube([total_w - wall, total_d - wall, 1.2]);
+        translate([wall/2, wall/2, -ZERO_GAP])
+            cube([total_w - wall, total_d - wall, 1.0 + 2*ZERO_GAP]);
     }
 }
 
@@ -125,7 +131,7 @@ module back_cover() {
     translate([0,0,base_h])
         union() {
             // Base
-            translate([0, total_d, 0])
+            translate([0, total_d, -EPS])
                 rotate([180,0,0])
                     rounded_cube([total_w, total_d, base_h+EPS], base_h);
             
