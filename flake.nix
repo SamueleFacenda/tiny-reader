@@ -49,10 +49,9 @@
           packages.arduino-cli = arduinoCli;
 
           devShells.default = pkgs.mkShell {
-            buildInputs = with pkgs; [ arduinoCli git python3 unzip coreutils python3Packages.pyserial ];
+            buildInputs = with pkgs; [ arduinoCli ];
             # Include espidf tools if needed for esptool/platform operations
             nativeBuildInputs = with pkgs; [
-              cmake
             ];
           };
        }
