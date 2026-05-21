@@ -51,9 +51,9 @@
           devShells.default = pkgs.mkShell {
             buildInputs = with pkgs; [ arduinoCli git python3 unzip coreutils python3Packages.pyserial ];
             # Include espidf tools if needed for esptool/platform operations
-            shellHook = ''
-              echo "Welcome to the development shell. Use: nix develop -c <cmd> or run arduino-cli directly."
-            '';
+            nativeBuildInputs = with pkgs; [
+              cmake
+            ];
           };
        }
      ));

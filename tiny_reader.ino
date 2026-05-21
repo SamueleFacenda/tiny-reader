@@ -3,13 +3,16 @@
 #include <WebServer.h>
 #include <LittleFS.h>
 
+
 // Use GxEPD2 + Adafruit GFX for e-paper
 #include <GxEPD2_BW.h>
 
+#define GxEPD2_DRIVER_CLASS GxEPD2_213_BN // DEPG0213BN  122x250, SSD1680, (FPC-7528B), TTGO T5 V2.4.1, V2.3.1
+#define GxEPD2_DRIVER_CLASS GxEPD2_213_GDEY0213B74 // GDEY0213B74 122x250, SSD1680, (FPC-A002 20.04.08)
 // Hardware wiring from factory spi.h
 // SCK = 12, MOSI = 11, RES = 10, DC = 13, CS = 14, BUSY = 9
 // Construct a GxEPD2 display object for the 213 (122x250 visible) panel
-GxEPD2_BW<GxEPD2_213, GxEPD2_213::HEIGHT> display(GxEPD2_213(/*CS=*/ 14, /*DC=*/ 13, /*RST=*/ 10, /*BUSY=*/ 9));
+GxEPD2_BW<GxEPD2_DRIVER_CLASS, GxEPD2_DRIVER_CLASS::HEIGHT> display(GxEPD2_DRIVER_CLASS(/*CS=*/ 14, /*DC=*/ 13, /*RST=*/ 10, /*BUSY=*/ 9));
 
 // Pins - align with factory mappings and use HOME (GPIO2) for wake
 // HOME (wake): 2, EXIT:1, PRV:6, NEXT:4, OK:5
@@ -132,7 +135,7 @@ void renderPage() {
 
   // Initialize display and clear to white
   display.init(115200);
-  display.setRotation(0);
+  display.setRotation(1);
   display.setTextColor(GxEPD_BLACK);
 
   display.firstPage();
@@ -165,7 +168,7 @@ void renderPage() {
 void displaySelfTest() {
   Serial.println("Display self-test");
   display.init(115200);
-  display.setRotation(0);
+  display.setRotation(3);
   display.setTextColor(GxEPD_BLACK);
   display.setTextSize(2);
   display.setFullWindow();
@@ -272,17 +275,22 @@ void setup() {
     pinMode(pin, INPUT_PULLUP);
   };
 
+  // Configure pin 7 for screen power control
+  pinMode(7, OUTPUT);        // Set pin 7 as output
+  digitalWrite(7, HIGH);     // Activate screen power by setting pin 7 high
+
   configureButtonPin(BTN_HOME);
   configureButtonPin(BTN_EXIT);
   configureButtonPin(BTN_PREV);
   configureButtonPin(BTN_NEXT);
   configureButtonPin(BTN_OK);
 
-  if (!LittleFS.begin()) {
-    Serial.println("FS FAIL");
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS Initialization Failed completely!");
     while (1) delay(1000);
+  } else {
+    Serial.println("LittleFS mounted successfully.");
   }
-
   // Do not start WiFi/server by default
 
   // Initialize display library (no full update here)
