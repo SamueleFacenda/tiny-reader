@@ -52,6 +52,7 @@
             buildInputs = with pkgs; [ arduinoCli ];
             # Include espidf tools if needed for esptool/platform operations
             nativeBuildInputs = with pkgs; [
+              openscad
             ];
           };
        }

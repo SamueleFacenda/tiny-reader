@@ -40,33 +40,36 @@ module corners(offset_val = 2.2) {
 }
 
 // --- BOARD SPECIFICATIONS ---
-pcb_w = 63.3;         // PCB Width
+pcb_w = 63.0;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
 // pcb_h = 10.7; // real height
 // pcb_h = 10.7 + 6.0;    // battery plus full pcb
-pcb_h = 5.7 + 6.0;    // battery plus pcb with ports removed
+pcb_h = 6.5 + 6.0 + 0.2;    // battery plus pcb with ports removed
 pcb_r_h = 6.0; // Height of the buttons side
 pcb_l_h = 2.5; // Height of the left side
 
 // --- FRONT BEZEL (SCREEN EDGES) ---
-bezel_l = 4.7;         // Left bezel
-bezel_r = 10.0;         // Right bezel
-bezel_tb = 3.5;        // Top/Bottom bezel
+bezel_l = 4.5;         // Left bezel
+bezel_r = 9.8;         // Right bezel
+bezel_tb = 3.3;        // Top/Bottom bezel
 bezel_thickness = 0.8; // Front wall thickness
 
 // --- USB-C POSITION ---
 // X position is calculated from the left edge (bezel_l)
-usb_x_pos = 32.0;
-usb_from_top = 4.1;
+usb_x_pos = 32.2;
+usb_from_top = 4.9;
 usb_w = 11.0;
 usb_h = 4.5;
 usb_corner_r = 1.5;
 
 // Buttons position (on the left side, centered vertically)
-buttons_w = 30.0; // width with some margin
-buttons_from_bezel = 2.5; // distance from the top (without bezel) to buttons top
-buttons_h = 3.5; // height of the buttons area
+buttons_w = 31.0; // width with some margin
+buttons_from_bezel = 3.0; // distance from the top (without bezel) to buttons top
+buttons_h = 4.0; // height of the buttons area
 
+// Opening hole on the base
+opening_w = 10.0;
+opening_r = 2.0;
 
 // --- ADJUSTMENT PARAMETERS (SNUG FIT) ---
 wall = 2.0;           // Wall thickness
@@ -89,7 +92,7 @@ total_h = pcb_h + bezel_thickness;
 // --- MAIN BODY (CASE) ---
 module main_body() {
     if ($preview) {
-        translate([31.6 + wall, 15.6 + wall, pcb_h - 0.9])
+        translate([31.6 + wall, 15.6 + wall, pcb_h - 1.7])
             rotate([90,0,90])
                 #import("output.stl");
     }
@@ -109,7 +112,7 @@ module main_body() {
         // Buttons Cutout (on the left side, centered vertically)
         translate([wall, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel])
             rotate([-90, 0, 90])
-                rounded_trapezoid([buttons_w, buttons_h], wall, buttons_h/2 - EPS);
+                rounded_trapezoid([buttons_w, buttons_h], wall, buttons_h/2 - EPS, off= wall * 1.5);
 
         // USB-C Cutout
         translate([wall + usb_x_pos - usb_w/2, total_d -wall, total_h - bezel_thickness - usb_from_top + usb_h/2])
@@ -129,21 +132,33 @@ module main_body() {
 // --- BACK COVER ---
 module back_cover() {
     translate([0,0,base_h])
-        union() {
-            // Base
-            translate([0, total_d, -EPS])
-                rotate([180,0,0])
-                    rounded_cube([total_w, total_d, base_h+EPS], base_h);
-            
-            // Locking Lip (Male)
-            translate([wall/2 + tolerance, wall/2 + tolerance, 0])
-                cube([total_w - wall - 2*tolerance, total_d - wall - 2*tolerance, 1.0]);
+        difference() {
+            union() {
+                // Base
+                translate([0, total_d, 0])
+                    rotate([180,0,0])
+                        rounded_cube([total_w, total_d, base_h+EPS], base_h);
+                
+                // Locking Lip (Male)
+                translate([wall/2 + tolerance, wall/2 + tolerance, 0])
+                    cube([total_w - wall - 2*tolerance, total_d - wall - 2*tolerance, 1.0]);
 
-            // Pins with spherical snaps
-            corners(1.8) {
-                cylinder(pin_h, d=pin_dia);
-                translate([0,0, pin_h]) sphere(d=pin_dia + 0.1); 
+                // Pins with spherical snaps
+                corners(1.8) {
+                    cylinder(pin_h, d=pin_dia);
+                    translate([0,0, pin_h]) sphere(d=pin_dia + 0.1); 
+                }
             }
+            // Opening cutout for piece splitting
+            translate([0, total_d/2, 0])
+                rotate([0, 60, 0])
+                    hull() {
+                        translate([0, opening_w/2 - opening_r, -1])
+                            cylinder(h=7, r=opening_r);
+                        translate([0, -opening_w/2 + opening_r, -1])
+                            cylinder(h=7, r=opening_r);
+                    }
+
         }
 }
 

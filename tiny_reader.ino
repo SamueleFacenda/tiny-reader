@@ -7,20 +7,20 @@
 // Use GxEPD2 + Adafruit GFX for e-paper
 #include <GxEPD2_BW.h>
 
-#define GxEPD2_DRIVER_CLASS GxEPD2_213_BN // DEPG0213BN  122x250, SSD1680, (FPC-7528B), TTGO T5 V2.4.1, V2.3.1
+// #define GxEPD2_DRIVER_CLASS GxEPD2_213_BN // DEPG0213BN  122x250, SSD1680, (FPC-7528B), TTGO T5 V2.4.1, V2.3.1
 #define GxEPD2_DRIVER_CLASS GxEPD2_213_GDEY0213B74 // GDEY0213B74 122x250, SSD1680, (FPC-A002 20.04.08)
 // Hardware wiring from factory spi.h
-// SCK = 12, MOSI = 11, RES = 10, DC = 13, CS = 14, BUSY = 9
-// Construct a GxEPD2 display object for the 213 (122x250 visible) panel
 GxEPD2_BW<GxEPD2_DRIVER_CLASS, GxEPD2_DRIVER_CLASS::HEIGHT> display(GxEPD2_DRIVER_CLASS(/*CS=*/ 14, /*DC=*/ 13, /*RST=*/ 10, /*BUSY=*/ 9));
 
 // Pins - align with factory mappings and use HOME (GPIO2) for wake
-// HOME (wake): 2, EXIT:1, PRV:6, NEXT:4, OK:5
 #define BTN_HOME 2
 #define BTN_EXIT 1
 #define BTN_PREV 6
 #define BTN_NEXT 4
 #define BTN_OK 5
+
+#define DISPLAY_ROTATION 3
+#define MAX_FILE_SIZE (1500 * 1024)
 
 // Server configuration
 WebServer server(80);
@@ -34,8 +34,6 @@ uint32_t pagePos = 0;
 
 unsigned long lastActivity = 0;
 
-// storage
-#define MAX_FILE_SIZE (1500 * 1024)
 
 const char* uploadPage = R"rawliteral(
 <!DOCTYPE html>
@@ -135,7 +133,7 @@ void renderPage() {
 
   // Initialize display and clear to white
   display.init(115200);
-  display.setRotation(1);
+  display.setRotation(DISPLAY_ROTATION);
   display.setTextColor(GxEPD_BLACK);
 
   display.firstPage();
@@ -168,7 +166,7 @@ void renderPage() {
 void displaySelfTest() {
   Serial.println("Display self-test");
   display.init(115200);
-  display.setRotation(3);
+  display.setRotation(DISPLAY_ROTATION);
   display.setTextColor(GxEPD_BLACK);
   display.setTextSize(2);
   display.setFullWindow();
@@ -291,14 +289,9 @@ void setup() {
   } else {
     Serial.println("LittleFS mounted successfully.");
   }
-  // Do not start WiFi/server by default
-
-  // Initialize display library (no full update here)
-  // LittleFS may be needed by EPD font routines
 
   loadBook();
   if (!book) {
-    // No book loaded: run a visible self-test to help debug hardware wiring.
     displaySelfTest();
   } else {
     renderPage();
