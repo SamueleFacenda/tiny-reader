@@ -44,8 +44,8 @@ pcb_w = 63.0;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
 // pcb_h = 10.7; // real height
 // pcb_h = 10.7 + 6.0;    // battery plus full pcb
-pcb_h = 6.5 + 6.0 + 0.2;    // battery plus pcb with ports removed
-pcb_r_h = 6.0; // Height of the buttons side
+pcb_h = 6.5 + 6.0 + 0.5;    // battery plus pcb with ports removed
+pcb_r_h = 6.8; // Height of the buttons side
 pcb_l_h = 2.5; // Height of the left side
 
 // --- FRONT BEZEL (SCREEN EDGES) ---
@@ -70,6 +70,12 @@ buttons_h = 4.0; // height of the buttons area
 // Opening hole on the base
 opening_w = 10.0;
 opening_r = 2.0;
+
+// Internal buttons position
+internal_buttons_r = 1.2;
+boot_from_wall = 4.7 + internal_buttons_r; // distance from the wall to the center of the boot button
+reset_from_wall = 15.2 + internal_buttons_r; // distance from the wall to the center of the reset button
+internal_buttons_y = 2.5 + internal_buttons_r; // distance from the front edge to the center of the buttons
 
 // --- ADJUSTMENT PARAMETERS (SNUG FIT) ---
 wall = 2.0;           // Wall thickness
@@ -158,6 +164,12 @@ module back_cover() {
                         translate([0, -opening_w/2 + opening_r, -1])
                             cylinder(h=7, r=opening_r);
                     }
+
+            // Reset and button toothpick openings
+            translate([total_w - boot_from_wall - wall - gap, wall + internal_buttons_y, -base_h -ZERO_GAP])
+                cylinder(h=(base_h + wall)*2, r=internal_buttons_r, center=true);
+            translate([total_w - reset_from_wall - wall - gap, wall + internal_buttons_y, -base_h -ZERO_GAP])
+                cylinder(h=(base_h + wall)*2, r=internal_buttons_r, center=true);
 
         }
 }
