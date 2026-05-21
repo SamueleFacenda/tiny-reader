@@ -1,0 +1,5 @@
+.pio
+.vscode/
+*.stl
+*.stp
+/CrowPanel-ESP32-2.13-E-paper-HMI-Display-with-122-250/
