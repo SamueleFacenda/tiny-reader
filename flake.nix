@@ -33,7 +33,6 @@
             libraries = with pkgs.arduinoLibraries; [
               (arduino-nix.latestVersion EPD)
               (arduino-nix.latestVersion CRC32)
-              # Adafruit GFX has spaces in the library name in the index
               (arduino-nix.latestVersion pkgs.arduinoLibraries."Adafruit GFX Library")
               (arduino-nix.latestVersion pkgs.arduinoLibraries."Adafruit BusIO")
               (arduino-nix.latestVersion GxEPD2)
@@ -49,8 +48,7 @@
           packages.arduino-cli = arduinoCli;
 
           devShells.default = pkgs.mkShell {
-            buildInputs = with pkgs; [ arduinoCli ];
-            # Include espidf tools if needed for esptool/platform operations
+            buildInputs = with pkgs; [ arduinoCli python3Packages.pyserial ];
             nativeBuildInputs = with pkgs; [
               openscad
             ];
