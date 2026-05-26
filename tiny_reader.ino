@@ -517,6 +517,9 @@ void loop() {
       case ScreenId::Reader:
         showScreen(ScreenId::MenuLibrary);
         break;
+      case ScreenId::ChooseBook:
+        showScreen(ScreenId::MenuLibrary);
+        break;
       case ScreenId::WifiSettings:
         stopWifiPortal();
         showScreen(ScreenId::MenuWifi);
@@ -579,6 +582,51 @@ void loop() {
         } else {
           // no books -> go to wifi
           showScreen(ScreenId::MenuWifi);
+        }
+        action = true;
+      }
+      break;
+    case ScreenId::ChooseBook:
+      if (buttons.consumeShortPress(ButtonId::Next)) {
+        Serial.println("BTN Next");
+        if (!libraryBooks.empty()) {
+          libraryIndex = min(libraryIndex + 1, static_cast<int>(libraryBooks.size()) - 1);
+          int maxVisible = uiLayout().maxLines;
+          if (libraryIndex >= libraryScroll + maxVisible) {
+            libraryScroll = libraryIndex - maxVisible + 1;
+          }
+          Serial.printf("ChooseBook move next -> idx=%d scroll=%d books=%u\n",
+                        libraryIndex,
+                        libraryScroll,
+                        static_cast<unsigned>(libraryBooks.size()));
+          uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
+        }
+        action = true;
+      }
+      if (buttons.consumeShortPress(ButtonId::Prev)) {
+        Serial.println("BTN Prev");
+        if (!libraryBooks.empty()) {
+          libraryIndex = max(libraryIndex - 1, 0);
+          if (libraryIndex < libraryScroll) {
+            libraryScroll = libraryIndex;
+          }
+          Serial.printf("ChooseBook move prev -> idx=%d scroll=%d books=%u\n",
+                        libraryIndex,
+                        libraryScroll,
+                        static_cast<unsigned>(libraryBooks.size()));
+          uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
+        }
+        action = true;
+      }
+      if (buttons.consumeShortPress(ButtonId::Ok)) {
+        Serial.println("BTN Ok");
+        if (!libraryBooks.empty()) {
+          Serial.printf("ChooseBook open book idx=%d path=%s\n", libraryIndex, libraryBooks[libraryIndex].path.c_str());
+          openBook(libraryBooks[libraryIndex].path, false);
+          showScreen(ScreenId::Reader);
+        } else {
+          Serial.println("ChooseBook: no books");
+          showScreen(ScreenId::MenuLibrary);
         }
         action = true;
       }
