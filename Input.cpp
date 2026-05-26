@@ -30,7 +30,7 @@ void ButtonManager::begin() {
     ButtonId id = static_cast<ButtonId>(i);
     ButtonState& st = states[i];
     st.pin = pinFor(id);
-    st.enabled = (id != ButtonId::Home);
+    st.enabled = true;
     st.rawDown = false;
     st.lastDown = false;
     st.pressedAt = 0;
@@ -38,7 +38,6 @@ void ButtonManager::begin() {
     st.longFired = false;
     st.shortPress = false;
     st.longPress = false;
-
     pinMode(st.pin, Config::BUTTON_PULLUP ? INPUT_PULLUP : INPUT);
   }
 }

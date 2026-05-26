@@ -16,10 +16,11 @@ EpdDisplay display(EPD_DRIVER_CLASS(Config::PIN_EPD_CS, Config::PIN_EPD_DC, Conf
 enum class ScreenId : uint8_t {
   Reader = 0,
   MenuLibrary = 1,
-  MenuWifi = 2,
-  MenuInfo = 3,
-  WifiSettings = 4,
-  Error = 5
+  ChooseBook = 2,
+  MenuWifi = 3,
+  MenuInfo = 4,
+  WifiSettings = 5,
+  Error = 6
 };
 
 struct PageData {
@@ -49,6 +50,41 @@ static int libraryScroll = 0;
 
 static void updateActivity() {
   lastActivity = millis();
+}
+
+static const char* screenName(ScreenId id) {
+  switch (id) {
+    case ScreenId::Reader:
+      return "Reader";
+    case ScreenId::MenuLibrary:
+      return "MenuLibrary";
+    case ScreenId::ChooseBook:
+      return "ChooseBook";
+    case ScreenId::MenuWifi:
+      return "MenuWifi";
+    case ScreenId::MenuInfo:
+      return "MenuInfo";
+    case ScreenId::WifiSettings:
+      return "WifiSettings";
+    case ScreenId::Error:
+      return "Error";
+    default:
+      return "Unknown";
+  }
+}
+
+static void logState(const char* tag) {
+  Serial.printf(
+    "%s screen=%s reader=%s books=%u idx=%d scroll=%d portal=%s uptime=%lu\n",
+    tag,
+    screenName(screen),
+    reader.file ? "open" : "closed",
+    static_cast<unsigned>(libraryBooks.size()),
+    libraryIndex,
+    libraryScroll,
+    webPortalActive() ? "on" : "off",
+    static_cast<unsigned long>(webPortalUptimeMs())
+  );
 }
 
 static String titleFromPath(const String& path) {
@@ -269,35 +305,73 @@ static int batteryPercentFromVoltage(float v) {
 }
 
 static void showScreen(ScreenId target) {
+  Serial.printf("showScreen: %s -> %s\n", screenName(screen), screenName(target));
   if (target == ScreenId::Reader && !reader.file) {
+    Serial.println("showScreen: no book open, falling back to MenuLibrary");
     target = ScreenId::MenuLibrary;
   }
   screen = target;
+  logState("before-draw");
 
   switch (screen) {
     case ScreenId::Reader:
+      Serial.printf("draw Reader at pos=%lu size=%u history=%u\n",
+                    static_cast<unsigned long>(reader.pagePos),
+                    static_cast<unsigned>(reader.size),
+                    static_cast<unsigned>(reader.history.size()));
       renderCurrentPage(false);
       break;
     case ScreenId::MenuLibrary:
       refreshLibrary();
+      Serial.printf("draw MenuLibrary (menu focus) books=%u idx=%d scroll=%d\n",
+                    static_cast<unsigned>(libraryBooks.size()),
+                    libraryIndex,
+                    libraryScroll);
+      // menu-focused: show library pane with no active selection
+      uiDrawLibrary(display, libraryBooks, -1, libraryScroll);
+      break;
+    case ScreenId::ChooseBook:
+      refreshLibrary();
+      Serial.printf("draw ChooseBook books=%u selected=%d scroll=%d\n",
+                    static_cast<unsigned>(libraryBooks.size()),
+                    libraryIndex,
+                    libraryScroll);
+      if (libraryBooks.empty()) {
+        libraryIndex = 0;
+        libraryScroll = 0;
+      } else if (libraryIndex >= static_cast<int>(libraryBooks.size())) {
+        libraryIndex = static_cast<int>(libraryBooks.size()) - 1;
+      }
       uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
       break;
     case ScreenId::MenuWifi:
+      Serial.println("draw MenuWifi");
       uiDrawWifiOff(display);
       break;
     case ScreenId::MenuInfo: {
       StorageStats stats = storageGetStats();
       float v = readBatteryVoltage();
       int pct = batteryPercentFromVoltage(v);
+      Serial.printf("draw MenuInfo used=%u total=%u batt=%.2f pct=%d\n",
+                    static_cast<unsigned>(stats.usedBytes),
+                    static_cast<unsigned>(stats.totalBytes),
+                    v,
+                    pct);
       uiDrawInfo(display, stats, v, pct);
       break;
     }
     case ScreenId::WifiSettings:
+      Serial.printf("draw WifiSettings active=%s ip=%s\n",
+                    webPortalActive() ? "yes" : "no",
+                    webPortalIp().c_str());
       uiDrawWifiSettings(display, webPortalActive(), webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS, webPortalUptimeMs(), false);
       break;
     case ScreenId::Error:
+      Serial.println("draw Error");
       break;
   }
+
+  logState("after-draw");
 }
 
 static void onUploadComplete(const String& path, bool success) {
@@ -442,8 +516,14 @@ void loop() {
         showScreen(ScreenId::MenuLibrary);
         break;
       case ScreenId::MenuLibrary:
-        if (reader.file) {
+        if (libraryBooks.empty()) {
+          Serial.println("BTN Exit: empty library -> MenuWifi");
+          showScreen(ScreenId::MenuWifi);
+        } else if (reader.file) {
           showScreen(ScreenId::Reader);
+        } else {
+          Serial.println("BTN Exit: library -> MenuWifi");
+          showScreen(ScreenId::MenuWifi);
         }
         break;
       case ScreenId::Error:
@@ -466,34 +546,29 @@ void loop() {
       }
       break;
     case ScreenId::MenuLibrary:
+      // Menu-focused: Next/Prev move the active menu, OK enters ChooseBook
       if (buttons.consumeShortPress(ButtonId::Next)) {
         Serial.println("BTN Next");
-        if (!libraryBooks.empty()) {
-          libraryIndex = min(libraryIndex + 1, static_cast<int>(libraryBooks.size()) - 1);
-          int maxVisible = uiLayout().maxLines;
-          if (libraryIndex >= libraryScroll + maxVisible) {
-            libraryScroll = libraryIndex - maxVisible + 1;
-          }
-          uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
-        }
+        showScreen(nextMenu(screen));
         action = true;
       }
       if (buttons.consumeShortPress(ButtonId::Prev)) {
         Serial.println("BTN Prev");
-        if (!libraryBooks.empty()) {
-          libraryIndex = max(libraryIndex - 1, 0);
-          if (libraryIndex < libraryScroll) {
-            libraryScroll = libraryIndex;
-          }
-          uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
-        }
+        showScreen(previousMenu(screen));
         action = true;
       }
       if (buttons.consumeShortPress(ButtonId::Ok)) {
         Serial.println("BTN Ok");
+        refreshLibrary();
         if (!libraryBooks.empty()) {
-          openBook(libraryBooks[libraryIndex].path, false);
-          showScreen(ScreenId::Reader);
+          // enter book-choose mode
+          if (libraryIndex >= static_cast<int>(libraryBooks.size())) {
+            libraryIndex = static_cast<int>(libraryBooks.size()) - 1;
+          }
+          showScreen(ScreenId::ChooseBook);
+        } else {
+          // no books -> go to wifi
+          showScreen(ScreenId::MenuWifi);
         }
         action = true;
       }
@@ -512,8 +587,11 @@ void loop() {
       if (buttons.consumeShortPress(ButtonId::Ok)) {
         Serial.println("BTN Ok");
         if (!webPortalActive()) {
+          Serial.println("Starting web portal");
           webPortalStart(onUploadComplete);
           lastWifiRefresh = 0;
+        } else {
+          Serial.println("Web portal already active");
         }
         showScreen(ScreenId::WifiSettings);
         action = true;
@@ -532,6 +610,7 @@ void loop() {
       }
       if (buttons.consumeShortPress(ButtonId::Ok)) {
         Serial.println("BTN Ok");
+        Serial.println("Refreshing info screen");
         showScreen(ScreenId::MenuInfo);
         action = true;
       }
@@ -539,6 +618,7 @@ void loop() {
     case ScreenId::WifiSettings:
       if (buttons.consumeShortPress(ButtonId::Ok)) {
         Serial.println("BTN Ok");
+        Serial.println("Refreshing wifi settings screen");
         showScreen(ScreenId::WifiSettings);
         action = true;
       }

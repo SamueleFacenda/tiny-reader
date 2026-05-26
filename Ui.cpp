@@ -139,6 +139,10 @@ void uiDrawLibrary(EpdDisplay& display, const std::vector<BookInfo>& books, int 
     if (books.empty()) {
       display.setCursor(layout.contentX, startY);
       display.print("No books yet");
+      display.setCursor(layout.contentX, startY + layout.lineHeight);
+      display.print("Next/Prev: switch menu");
+      display.setCursor(layout.contentX, startY + layout.lineHeight * 2);
+      display.print("OK: Wi-Fi upload");
     } else {
       for (int i = 0; i < maxVisible; ++i) {
         int bookIndex = scrollIndex + i;

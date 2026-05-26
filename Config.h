@@ -22,7 +22,6 @@ namespace Config {
   constexpr int PIN_BTN_NEXT = 4;
   constexpr int PIN_BTN_OK = 5;
 
-  constexpr bool SKIP_UART_TX_BUTTON = false;
   constexpr bool BUTTON_PULLUP = false;
   constexpr uint32_t BUTTON_DEBOUNCE_MS = 30;
 
