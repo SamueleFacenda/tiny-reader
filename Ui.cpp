@@ -25,9 +25,9 @@ static void computeLayout(EpdDisplay& display) {
 static void computeReaderLayout(EpdDisplay& display) {
   readerLayout.width = display.width();
   readerLayout.height = display.height();
-  readerLayout.margin = max<int16_t>(Config::UI_MIN_MARGIN, readerLayout.width / 40);
+  readerLayout.margin = max<int16_t>(2, readerLayout.width / 80);
   readerLayout.headerH = 0;
-  readerLayout.footerH = max<int16_t>(12, readerLayout.height / 12);
+  readerLayout.footerH = max<int16_t>(10, readerLayout.height / 14);
   readerLayout.contentX = readerLayout.margin;
   readerLayout.contentY = readerLayout.margin;
   readerLayout.contentW = readerLayout.width - readerLayout.margin * 2;
@@ -107,7 +107,7 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
       display.fillRect(r.contentX, r.contentY, r.contentW, r.contentH + r.footerH, GxEPD_WHITE);
     }
 
-    int16_t textY = r.contentY + r.lineHeight;
+    int16_t textY = r.contentY + 2;
     int16_t maxChars = r.charsPerLine;
 
     for (size_t i = 0; i < view.lines.size(); ++i) {
@@ -116,7 +116,7 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
     }
 
     String progress = String(view.progressPercent) + "%";
-    int16_t footerY = r.height - r.margin;
+    int16_t footerY = r.height - r.lineHeight;
     int16_t footerX = r.contentX;
     display.setCursor(footerX, footerY);
     display.print(progress);
