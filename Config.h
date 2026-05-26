@@ -17,13 +17,14 @@ namespace Config {
 
   // Button pins (align with factory mappings)
   constexpr int PIN_BTN_HOME = 2;
-  constexpr int PIN_BTN_EXIT = 1; // UART0 TX on ESP32-S3
+  constexpr int PIN_BTN_EXIT = 1;
   constexpr int PIN_BTN_PREV = 6;
   constexpr int PIN_BTN_NEXT = 4;
   constexpr int PIN_BTN_OK = 5;
 
-  constexpr bool SKIP_UART_TX_BUTTON = true;
+  constexpr bool SKIP_UART_TX_BUTTON = false;
   constexpr bool BUTTON_PULLUP = false;
+  constexpr uint32_t BUTTON_DEBOUNCE_MS = 30;
 
   // Display and rendering
   constexpr uint8_t DISPLAY_ROTATION = 3; // landscape

@@ -3,7 +3,7 @@
 static uint8_t pinFor(ButtonId id) {
   switch (id) {
     case ButtonId::Home:
-      return Config::PIN_BTN_HOME;
+      return Config::PIN_BTN_OK;
     case ButtonId::Exit:
       return Config::PIN_BTN_EXIT;
     case ButtonId::Prev:
@@ -11,7 +11,7 @@ static uint8_t pinFor(ButtonId id) {
     case ButtonId::Next:
       return Config::PIN_BTN_NEXT;
     case ButtonId::Ok:
-      return Config::PIN_BTN_OK;
+      return Config::PIN_BTN_HOME;
     default:
       return 0;
   }
@@ -30,18 +30,15 @@ void ButtonManager::begin() {
     ButtonId id = static_cast<ButtonId>(i);
     ButtonState& st = states[i];
     st.pin = pinFor(id);
-    st.enabled = true;
+    st.enabled = (id != ButtonId::Home);
+    st.rawDown = false;
     st.lastDown = false;
     st.pressedAt = 0;
+    st.lastChangeAt = 0;
     st.longFired = false;
     st.shortPress = false;
     st.longPress = false;
 
-    if (Config::SKIP_UART_TX_BUTTON && st.pin == 1) {
-      st.enabled = false;
-      Serial.println("NOTE: skipping GPIO1 (UART TX) button");
-      continue;
-    }
     pinMode(st.pin, Config::BUTTON_PULLUP ? INPUT_PULLUP : INPUT);
   }
 }
@@ -54,16 +51,27 @@ void ButtonManager::update() {
       continue;
     }
 
-    bool down = (digitalRead(st.pin) == LOW);
-    if (down && !st.lastDown) {
-      st.pressedAt = now;
-      st.longFired = false;
+    bool rawDown = (digitalRead(st.pin) == LOW);
+    if (rawDown != st.rawDown) {
+      st.rawDown = rawDown;
+      st.lastChangeAt = now;
     }
 
-    if (!down && st.lastDown) {
-      unsigned long held = now - st.pressedAt;
-      if (!st.longFired && held < Config::LONG_PRESS_MS) {
-        st.shortPress = true;
+    if (now - st.lastChangeAt < Config::BUTTON_DEBOUNCE_MS) {
+      continue;
+    }
+
+    bool down = st.rawDown;
+    if (down != st.lastDown) {
+      st.lastDown = down;
+      if (down) {
+        st.pressedAt = now;
+        st.longFired = false;
+      } else {
+        unsigned long held = now - st.pressedAt;
+        if (!st.longFired && held < Config::LONG_PRESS_MS) {
+          st.shortPress = true;
+        }
       }
     }
 

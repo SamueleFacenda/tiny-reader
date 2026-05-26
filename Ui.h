@@ -10,6 +10,7 @@ struct UiLayout {
   int16_t width = 0;
   int16_t height = 0;
   int16_t margin = 0;
+  int16_t sidebarW = 0;
   int16_t headerH = 0;
   int16_t footerH = 0;
   int16_t contentX = 0;
@@ -33,6 +34,7 @@ const UiLayout& uiReaderLayout();
 
 void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial);
 void uiDrawLibrary(EpdDisplay& display, const std::vector<BookInfo>& books, int selectedIndex, int scrollIndex);
-void uiDrawServer(EpdDisplay& display, bool active, const String& ip, uint32_t uptimeMs);
+void uiDrawWifiOff(EpdDisplay& display);
+void uiDrawWifiSettings(EpdDisplay& display, bool active, const String& ip, const String& ssid, const String& password, uint32_t uptimeMs, bool partial);
 void uiDrawInfo(EpdDisplay& display, const StorageStats& stats, float battV, int battPercent);
 void uiDrawError(EpdDisplay& display, const String& title, const String& message, const String& action);

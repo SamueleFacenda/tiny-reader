@@ -15,10 +15,11 @@ EpdDisplay display(EPD_DRIVER_CLASS(Config::PIN_EPD_CS, Config::PIN_EPD_DC, Conf
 
 enum class ScreenId : uint8_t {
   Reader = 0,
-  Library = 1,
-  Server = 2,
-  Info = 3,
-  Error = 4
+  MenuLibrary = 1,
+  MenuWifi = 2,
+  MenuInfo = 3,
+  WifiSettings = 4,
+  Error = 5
 };
 
 struct PageData {
@@ -38,8 +39,9 @@ struct ReaderState {
 
 static ReaderState reader;
 static ButtonManager buttons;
-static ScreenId screen = ScreenId::Reader;
+static ScreenId screen = ScreenId::MenuLibrary;
 static unsigned long lastActivity = 0;
+static unsigned long lastWifiRefresh = 0;
 static uint8_t partialCount = 0;
 static std::vector<BookInfo> libraryBooks;
 static int libraryIndex = 0;
@@ -104,6 +106,17 @@ static void refreshLibrary() {
     libraryScroll = 0;
     return;
   }
+
+  String currentBook = storageGetCurrentBook();
+  if (currentBook.length() > 0) {
+    for (size_t i = 0; i < libraryBooks.size(); ++i) {
+      if (libraryBooks[i].path == currentBook) {
+        libraryIndex = static_cast<int>(i);
+        break;
+      }
+    }
+  }
+
   if (libraryIndex >= static_cast<int>(libraryBooks.size())) {
     libraryIndex = static_cast<int>(libraryBooks.size()) - 1;
   }
@@ -117,6 +130,52 @@ static void refreshLibrary() {
   if (libraryIndex >= libraryScroll + maxVisible) {
     libraryScroll = libraryIndex - maxVisible + 1;
   }
+}
+
+static uint8_t menuIndexForScreen(ScreenId target) {
+  switch (target) {
+    case ScreenId::MenuLibrary:
+      return 0;
+    case ScreenId::MenuWifi:
+    case ScreenId::WifiSettings:
+      return 1;
+    case ScreenId::MenuInfo:
+      return 2;
+    default:
+      return 0;
+  }
+}
+
+static ScreenId previousMenu(ScreenId target) {
+  switch (target) {
+    case ScreenId::MenuLibrary:
+      return ScreenId::MenuInfo;
+    case ScreenId::MenuWifi:
+    case ScreenId::WifiSettings:
+      return ScreenId::MenuLibrary;
+    case ScreenId::MenuInfo:
+      return ScreenId::MenuWifi;
+    default:
+      return ScreenId::MenuLibrary;
+  }
+}
+
+static ScreenId nextMenu(ScreenId target) {
+  switch (target) {
+    case ScreenId::MenuLibrary:
+      return ScreenId::MenuWifi;
+    case ScreenId::MenuWifi:
+    case ScreenId::WifiSettings:
+      return ScreenId::MenuInfo;
+    case ScreenId::MenuInfo:
+      return ScreenId::MenuLibrary;
+    default:
+      return ScreenId::MenuLibrary;
+  }
+}
+
+static bool isMenuScreen(ScreenId target) {
+  return target == ScreenId::MenuLibrary || target == ScreenId::MenuWifi || target == ScreenId::MenuInfo || target == ScreenId::WifiSettings;
 }
 
 static void openBook(const String& path, bool resetPos) {
@@ -211,7 +270,7 @@ static int batteryPercentFromVoltage(float v) {
 
 static void showScreen(ScreenId target) {
   if (target == ScreenId::Reader && !reader.file) {
-    target = ScreenId::Library;
+    target = ScreenId::MenuLibrary;
   }
   screen = target;
 
@@ -219,20 +278,23 @@ static void showScreen(ScreenId target) {
     case ScreenId::Reader:
       renderCurrentPage(false);
       break;
-    case ScreenId::Library:
+    case ScreenId::MenuLibrary:
       refreshLibrary();
       uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
       break;
-    case ScreenId::Server:
-      uiDrawServer(display, webPortalActive(), webPortalIp(), webPortalUptimeMs());
+    case ScreenId::MenuWifi:
+      uiDrawWifiOff(display);
       break;
-    case ScreenId::Info: {
+    case ScreenId::MenuInfo: {
       StorageStats stats = storageGetStats();
       float v = readBatteryVoltage();
       int pct = batteryPercentFromVoltage(v);
       uiDrawInfo(display, stats, v, pct);
       break;
     }
+    case ScreenId::WifiSettings:
+      uiDrawWifiSettings(display, webPortalActive(), webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS, webPortalUptimeMs(), false);
+      break;
     case ScreenId::Error:
       break;
   }
@@ -248,6 +310,12 @@ static void onUploadComplete(const String& path, bool success) {
   openBook(path, true);
   showScreen(ScreenId::Reader);
   updateActivity();
+}
+
+static void stopWifiPortal() {
+  if (webPortalActive()) {
+    webPortalStop();
+  }
 }
 
 static bool ensureStorageReady() {
@@ -273,17 +341,20 @@ static bool ensureStorageReady() {
       okStart = 0;
     }
 
-    if (buttons.consumeShortPress(ButtonId::Home)) {
+    if (buttons.consumeShortPress(ButtonId::Exit)) {
       if (storageBegin(true)) {
         return true;
       }
-      uiDrawError(display, "LittleFS error", "Mount failed", "Hold OK to format");
+      uiDrawError(display, "LittleFS error", "Mount failed", "Press Exit to retry");
     }
     delay(20);
   }
 }
 
 static void maybeDeepSleep() {
+  if (screen != ScreenId::Reader) {
+    return;
+  }
   if (webPortalActive()) {
     return;
   }
@@ -326,18 +397,12 @@ void setup() {
   storageEnsureDirs();
 
   String current = storageGetCurrentBook();
-  if (current.length() == 0) {
-    libraryBooks = storageListBooks();
-    if (!libraryBooks.empty()) {
-      current = libraryBooks.front().path;
-    }
-  }
-
-  if (current.length() > 0) {
+  bool wokeFromSleep = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0);
+  if (wokeFromSleep && current.length() > 0) {
     openBook(current, false);
     showScreen(ScreenId::Reader);
   } else {
-    showScreen(ScreenId::Library);
+    showScreen(ScreenId::MenuLibrary);
   }
 
   lastActivity = millis();
@@ -348,19 +413,42 @@ void loop() {
 
   if (webPortalActive()) {
     webPortalHandle();
+    if (screen == ScreenId::WifiSettings && millis() - lastWifiRefresh >= 1000) {
+      lastWifiRefresh = millis();
+      uiDrawWifiSettings(display, true, webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS, webPortalUptimeMs(), true);
+    }
     if (webPortalUptimeMs() > Config::SERVER_TIMEOUT_MS) {
-      webPortalStop();
-      if (screen == ScreenId::Server) {
-        uiDrawServer(display, webPortalActive(), webPortalIp(), webPortalUptimeMs());
+      stopWifiPortal();
+      if (screen == ScreenId::WifiSettings) {
+        showScreen(ScreenId::MenuWifi);
       }
     }
   }
 
   bool action = false;
 
-  if (buttons.consumeShortPress(ButtonId::Home)) {
-    Serial.println("BTN Home");
-    showScreen(ScreenId::Reader);
+  if (buttons.consumeShortPress(ButtonId::Exit)) {
+    Serial.println("BTN Exit");
+    switch (screen) {
+      case ScreenId::Reader:
+        showScreen(ScreenId::MenuLibrary);
+        break;
+      case ScreenId::WifiSettings:
+        stopWifiPortal();
+        showScreen(ScreenId::MenuWifi);
+        break;
+      case ScreenId::MenuWifi:
+      case ScreenId::MenuInfo:
+        showScreen(ScreenId::MenuLibrary);
+        break;
+      case ScreenId::MenuLibrary:
+        if (reader.file) {
+          showScreen(ScreenId::Reader);
+        }
+        break;
+      case ScreenId::Error:
+        break;
+    }
     action = true;
   }
 
@@ -376,18 +464,8 @@ void loop() {
         renderPrevPage();
         action = true;
       }
-      if (buttons.consumeShortPress(ButtonId::Ok)) {
-        Serial.println("BTN Ok");
-        showScreen(ScreenId::Library);
-        action = true;
-      }
-      if (buttons.consumeLongPress(ButtonId::Ok)) {
-        Serial.println("BTN Ok (long)");
-        showScreen(ScreenId::Server);
-        action = true;
-      }
       break;
-    case ScreenId::Library:
+    case ScreenId::MenuLibrary:
       if (buttons.consumeShortPress(ButtonId::Next)) {
         Serial.println("BTN Next");
         if (!libraryBooks.empty()) {
@@ -419,43 +497,59 @@ void loop() {
         }
         action = true;
       }
-      if (buttons.consumeLongPress(ButtonId::Ok)) {
-        Serial.println("BTN Ok (long)");
-        showScreen(ScreenId::Server);
+      break;
+    case ScreenId::MenuWifi:
+      if (buttons.consumeShortPress(ButtonId::Next)) {
+        Serial.println("BTN Next");
+        showScreen(nextMenu(screen));
         action = true;
       }
-      break;
-    case ScreenId::Server:
+      if (buttons.consumeShortPress(ButtonId::Prev)) {
+        Serial.println("BTN Prev");
+        showScreen(previousMenu(screen));
+        action = true;
+      }
       if (buttons.consumeShortPress(ButtonId::Ok)) {
         Serial.println("BTN Ok");
-        if (webPortalActive()) {
-          webPortalStop();
-        } else {
+        if (!webPortalActive()) {
           webPortalStart(onUploadComplete);
+          lastWifiRefresh = 0;
         }
-        uiDrawServer(display, webPortalActive(), webPortalIp(), webPortalUptimeMs());
-        action = true;
-      }
-      if (buttons.consumeShortPress(ButtonId::Next)) {
-        Serial.println("BTN Next");
-        showScreen(ScreenId::Info);
-        action = true;
-      }
-      if (buttons.consumeShortPress(ButtonId::Prev)) {
-        Serial.println("BTN Prev");
-        showScreen(ScreenId::Library);
+        showScreen(ScreenId::WifiSettings);
         action = true;
       }
       break;
-    case ScreenId::Info:
+    case ScreenId::MenuInfo:
       if (buttons.consumeShortPress(ButtonId::Next)) {
         Serial.println("BTN Next");
-        showScreen(ScreenId::Reader);
+        showScreen(nextMenu(screen));
         action = true;
       }
       if (buttons.consumeShortPress(ButtonId::Prev)) {
         Serial.println("BTN Prev");
-        showScreen(ScreenId::Server);
+        showScreen(previousMenu(screen));
+        action = true;
+      }
+      if (buttons.consumeShortPress(ButtonId::Ok)) {
+        Serial.println("BTN Ok");
+        showScreen(ScreenId::MenuInfo);
+        action = true;
+      }
+      break;
+    case ScreenId::WifiSettings:
+      if (buttons.consumeShortPress(ButtonId::Ok)) {
+        Serial.println("BTN Ok");
+        showScreen(ScreenId::WifiSettings);
+        action = true;
+      }
+      if (buttons.consumeShortPress(ButtonId::Next)) {
+        Serial.println("BTN Next");
+        showScreen(nextMenu(screen));
+        action = true;
+      }
+      if (buttons.consumeShortPress(ButtonId::Prev)) {
+        Serial.println("BTN Prev");
+        showScreen(previousMenu(screen));
         action = true;
       }
       break;

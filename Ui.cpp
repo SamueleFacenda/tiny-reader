@@ -2,19 +2,20 @@
 
 static UiLayout layout;
 static UiLayout readerLayout;
-static const char* kTabs[] = {"Read", "Library", "Server", "Info"};
-static const uint8_t kTabCount = sizeof(kTabs) / sizeof(kTabs[0]);
+static const char* kMenuLabels[] = {"Library", "Wi-Fi", "Info"};
+static const uint8_t kMenuCount = sizeof(kMenuLabels) / sizeof(kMenuLabels[0]);
 
 static void computeLayout(EpdDisplay& display) {
   layout.width = display.width();
   layout.height = display.height();
   layout.margin = max<int16_t>(Config::UI_MIN_MARGIN, layout.width / 40);
-  layout.headerH = max<int16_t>(18, layout.height / 6);
-  layout.footerH = max<int16_t>(12, layout.height / 10);
-  layout.contentX = layout.margin;
-  layout.contentY = layout.headerH + layout.margin;
-  layout.contentW = layout.width - layout.margin * 2;
-  layout.contentH = layout.height - layout.headerH - layout.footerH - layout.margin * 2;
+  layout.sidebarW = max<int16_t>(38, layout.width / 4);
+  layout.headerH = 0;
+  layout.footerH = 0;
+  layout.contentX = layout.sidebarW + layout.margin;
+  layout.contentY = layout.margin;
+  layout.contentW = layout.width - layout.sidebarW - layout.margin * 2;
+  layout.contentH = layout.height - layout.margin * 2;
   layout.lineHeight = max<int16_t>(12, static_cast<int16_t>(8 * Config::UI_TEXT_SIZE + 4));
   int16_t charWidth = max<int16_t>(6, static_cast<int16_t>(6 * Config::UI_TEXT_SIZE));
   layout.charsPerLine = max<int16_t>(10, layout.contentW / charWidth);
@@ -37,19 +38,28 @@ static void computeReaderLayout(EpdDisplay& display) {
   readerLayout.maxLines = max<int16_t>(1, readerLayout.contentH / readerLayout.lineHeight);
 }
 
-static void drawTabs(EpdDisplay& display, uint8_t activeIndex) {
-  int16_t tabW = layout.width / kTabCount;
-  for (uint8_t i = 0; i < kTabCount; ++i) {
-    int16_t x = tabW * i;
-    int16_t w = (i == kTabCount - 1) ? (layout.width - x) : tabW;
+static void drawSidebar(EpdDisplay& display, uint8_t activeIndex) {
+  display.fillRect(0, 0, layout.sidebarW, layout.height, GxEPD_WHITE);
+  int16_t segmentH = layout.height / kMenuCount;
+  for (uint8_t i = 0; i < kMenuCount; ++i) {
+    int16_t y = segmentH * i;
+    int16_t h = (i == kMenuCount - 1) ? (layout.height - y) : segmentH;
     bool active = (i == activeIndex);
+    int16_t inset = active ? 1 : 4;
+    int16_t boxX = inset;
+    int16_t boxY = y + inset;
+    int16_t boxW = layout.sidebarW - inset * 2;
+    int16_t boxH = h - inset * 2;
+    display.fillRoundRect(boxX, boxY, boxW, boxH, 5, active ? GxEPD_BLACK : GxEPD_WHITE);
+    display.drawRoundRect(boxX, boxY, boxW, boxH, 5, GxEPD_BLACK);
+    if (active) {
+      display.drawRoundRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2, 4, GxEPD_BLACK);
+    }
     display.setTextColor(active ? GxEPD_WHITE : GxEPD_BLACK);
-    display.fillRect(x, 0, w, layout.headerH, active ? GxEPD_BLACK : GxEPD_WHITE);
-    display.drawRect(x, 0, w, layout.headerH, GxEPD_BLACK);
-    int16_t labelX = x + layout.margin;
-    int16_t labelY = layout.headerH - layout.margin;
+    int16_t labelX = boxX + layout.margin;
+    int16_t labelY = boxY + boxH / 2 + 4;
     display.setCursor(labelX, labelY);
-    display.print(kTabs[i]);
+    display.print(kMenuLabels[i]);
   }
   display.setTextColor(GxEPD_BLACK);
 }
@@ -120,7 +130,7 @@ void uiDrawLibrary(EpdDisplay& display, const std::vector<BookInfo>& books, int 
   display.firstPage();
   do {
     display.fillScreen(GxEPD_WHITE);
-    drawTabs(display, 1);
+    drawSidebar(display, 0);
 
     int16_t startY = layout.contentY + layout.lineHeight;
     int16_t maxVisible = layout.maxLines;
@@ -152,22 +162,63 @@ void uiDrawLibrary(EpdDisplay& display, const std::vector<BookInfo>& books, int 
   display.powerOff();
 }
 
-void uiDrawServer(EpdDisplay& display, bool active, const String& ip, uint32_t uptimeMs) {
+void uiDrawWifiOff(EpdDisplay& display) {
   display.setFullWindow();
   display.firstPage();
   do {
     display.fillScreen(GxEPD_WHITE);
-    drawTabs(display, 2);
+    drawSidebar(display, 1);
 
     int16_t y = layout.contentY + layout.lineHeight;
     display.setCursor(layout.contentX, y);
-    display.print(active ? "Server: ON" : "Server: OFF");
+    display.print("Wi-Fi off");
+    y += layout.lineHeight * 2;
+
+    display.setCursor(layout.contentX, y);
+    display.print("Press OK to start");
+    y += layout.lineHeight;
+    display.setCursor(layout.contentX, y);
+    display.print("the upload portal");
+  } while (display.nextPage());
+  display.powerOff();
+}
+
+void uiDrawWifiSettings(EpdDisplay& display, bool active, const String& ip, const String& ssid, const String& password, uint32_t uptimeMs, bool partial) {
+  const UiLayout& r = layout;
+  if (partial) {
+    display.setPartialWindow(r.contentX, r.contentY, r.contentW, r.contentH);
+  } else {
+    display.setFullWindow();
+  }
+
+  display.firstPage();
+  do {
+    if (!partial) {
+      display.fillScreen(GxEPD_WHITE);
+      drawSidebar(display, 1);
+    } else {
+      display.fillRect(r.contentX, r.contentY, r.contentW, r.contentH, GxEPD_WHITE);
+    }
+
+    int16_t y = r.contentY + r.lineHeight;
+    display.setCursor(layout.contentX, y);
+    display.print(active ? "Wi-Fi portal: ON" : "Wi-Fi portal: OFF");
     y += layout.lineHeight;
 
     if (active) {
       display.setCursor(layout.contentX, y);
       display.print("IP: ");
       display.print(ip);
+      y += layout.lineHeight;
+
+      display.setCursor(layout.contentX, y);
+      display.print("SSID: ");
+      display.print(ssid);
+      y += layout.lineHeight;
+
+      display.setCursor(layout.contentX, y);
+      display.print("Pass: ");
+      display.print(password);
       y += layout.lineHeight;
 
       display.setCursor(layout.contentX, y);
@@ -178,10 +229,7 @@ void uiDrawServer(EpdDisplay& display, bool active, const String& ip, uint32_t u
     }
 
     display.setCursor(layout.contentX, y + layout.lineHeight);
-    display.print("OK: toggle server");
-    y += layout.lineHeight * 2;
-    display.setCursor(layout.contentX, y);
-    display.print("Home: back to reader");
+    display.print("Exit: stop portal");
   } while (display.nextPage());
   display.powerOff();
 }
@@ -191,7 +239,7 @@ void uiDrawInfo(EpdDisplay& display, const StorageStats& stats, float battV, int
   display.firstPage();
   do {
     display.fillScreen(GxEPD_WHITE);
-    drawTabs(display, 3);
+    drawSidebar(display, 2);
 
     int16_t y = layout.contentY + layout.lineHeight;
     size_t usedKb = stats.usedBytes / 1024;
@@ -218,6 +266,10 @@ void uiDrawInfo(EpdDisplay& display, const StorageStats& stats, float battV, int
       display.print(battPercent);
       display.print("%)");
     }
+
+    y += layout.lineHeight * 2;
+    display.setCursor(layout.contentX, y);
+    display.print("OK: refresh stats");
   } while (display.nextPage());
   display.powerOff();
 }

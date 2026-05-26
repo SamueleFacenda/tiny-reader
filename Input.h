@@ -25,8 +25,10 @@ class ButtonManager {
   struct ButtonState {
     uint8_t pin = 0;
     bool enabled = false;
+    bool rawDown = false;
     bool lastDown = false;
     unsigned long pressedAt = 0;
+    unsigned long lastChangeAt = 0;
     bool longFired = false;
     bool shortPress = false;
     bool longPress = false;
