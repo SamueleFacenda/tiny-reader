@@ -383,8 +383,10 @@ static void onUploadComplete(const String& path, bool success) {
   }
   Serial.printf("Upload complete: %s\n", path.c_str());
   storageEnsureDirs();
-  openBook(path, true);
-  showScreen(ScreenId::Reader);
+  // Refresh library but keep the Wi-Fi/settings screen open so the user
+  // can press Exit to stop the portal and return manually.
+  refreshLibrary();
+  showScreen(ScreenId::WifiSettings);
   updateActivity();
 }
 

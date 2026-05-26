@@ -151,13 +151,19 @@ void uiDrawLibrary(EpdDisplay& display, const std::vector<BookInfo>& books, int 
         }
         int16_t lineY = startY + i * layout.lineHeight;
         bool active = (bookIndex == selectedIndex);
+        // compute font height and center text vertically
+        int16_t fontH = max<int16_t>(8 * Config::UI_TEXT_SIZE, 8);
+        int16_t textTop = lineY + (layout.lineHeight - fontH) / 2;
         if (active) {
-          display.fillRect(layout.contentX, lineY - layout.lineHeight + 2, layout.contentW, layout.lineHeight, GxEPD_BLACK);
+          // selection box should tightly wrap the text with small vertical padding
+          int16_t boxY = textTop - 1;
+          int16_t boxH = fontH + 2;
+          display.fillRect(layout.contentX, boxY, layout.contentW, boxH, GxEPD_BLACK);
           display.setTextColor(GxEPD_WHITE);
         } else {
           display.setTextColor(GxEPD_BLACK);
         }
-        display.setCursor(layout.contentX + 2, lineY);
+        display.setCursor(layout.contentX + 2, textTop);
         display.print(trimToWidth(books[bookIndex].name, maxChars));
       }
       display.setTextColor(GxEPD_BLACK);
