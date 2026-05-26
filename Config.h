@@ -51,7 +51,7 @@ namespace Config {
   constexpr const char* CURRENT_BOOK_FILE = "/current.txt";
 
   // Battery (set pin to valid ADC input to enable)
-  constexpr int BATTERY_ADC_PIN = -1;
+  constexpr int BATTERY_ADC_PIN = 1;
   constexpr float BATTERY_ADC_REF = 3.3f;
   constexpr int BATTERY_ADC_MAX = 4095;
   constexpr float BATTERY_DIVIDER = 2.0f;
