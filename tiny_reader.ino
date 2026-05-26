@@ -43,6 +43,7 @@ static ButtonManager buttons;
 static ScreenId screen = ScreenId::MenuLibrary;
 static unsigned long lastActivity = 0;
 static unsigned long lastWifiRefresh = 0;
+static uint16_t wifiPartialCount = 0;
 static uint8_t partialCount = 0;
 static std::vector<BookInfo> libraryBooks;
 static int libraryIndex = 0;
@@ -361,6 +362,7 @@ static void showScreen(ScreenId target) {
       break;
     }
     case ScreenId::WifiSettings:
+      wifiPartialCount = 0;
       Serial.printf("draw WifiSettings active=%s ip=%s\n",
                     webPortalActive() ? "yes" : "no",
                     webPortalIp().c_str());
@@ -489,7 +491,13 @@ void loop() {
     webPortalHandle();
     if (screen == ScreenId::WifiSettings && millis() - lastWifiRefresh >= 1000) {
       lastWifiRefresh = millis();
-      uiDrawWifiSettings(display, true, webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS, webPortalUptimeMs(), true);
+      bool doFullRefresh = (wifiPartialCount >= Config::WIFI_SETTINGS_FULL_REFRESH_EVERY);
+      uiDrawWifiSettings(display, true, webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS, webPortalUptimeMs(), !doFullRefresh);
+      if (doFullRefresh) {
+        wifiPartialCount = 0;
+      } else {
+        wifiPartialCount++;
+      }
     }
     if (webPortalUptimeMs() > Config::SERVER_TIMEOUT_MS) {
       stopWifiPortal();
