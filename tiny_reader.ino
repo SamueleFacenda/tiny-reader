@@ -35,6 +35,7 @@ struct ReaderState {
   String path;
   size_t size = 0;
   uint32_t pagePos = 0;
+  uint32_t nextPagePos = 0;
   std::vector<uint32_t> history;
 };
 
@@ -233,6 +234,7 @@ static void openBook(const String& path, bool resetPos) {
     pos = 0;
   }
   reader.pagePos = pos;
+  reader.nextPagePos = pos;
   reader.file.seek(reader.pagePos);
   reader.history.clear();
   storageSetCurrentBook(reader.path);
@@ -247,7 +249,7 @@ static void renderCurrentPage(bool allowPartial) {
   const UiLayout& layout = uiReaderLayout();
   reader.file.seek(reader.pagePos);
   PageData page = readPage(reader.file, layout.maxLines, layout.charsPerLine);
-  reader.pagePos = page.endPos;
+  reader.nextPagePos = page.endPos;
   storageSaveProgress(reader.path, reader.pagePos);
 
   ReaderView view;
@@ -264,7 +266,9 @@ static void renderCurrentPage(bool allowPartial) {
   } else {
     partialCount = 0;
   }
-  Serial.printf("Rendered page at %u\n", static_cast<unsigned>(reader.pagePos));
+  Serial.printf("Rendered page at %u next=%u\n",
+                static_cast<unsigned>(reader.pagePos),
+                static_cast<unsigned>(reader.nextPagePos));
 }
 
 static void renderNextPage() {
@@ -275,6 +279,7 @@ static void renderNextPage() {
   if (reader.history.size() > 50) {
     reader.history.erase(reader.history.begin());
   }
+  reader.pagePos = reader.nextPagePos;
   renderCurrentPage(true);
 }
 
@@ -284,6 +289,7 @@ static void renderPrevPage() {
   }
   reader.pagePos = reader.history.back();
   reader.history.pop_back();
+  reader.nextPagePos = reader.pagePos;
   renderCurrentPage(true);
 }
 
