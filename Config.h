@@ -28,6 +28,7 @@ namespace Config {
   // Display and rendering
   constexpr uint8_t DISPLAY_ROTATION = 3; // landscape
   constexpr uint8_t UI_TEXT_SIZE = 1;
+  constexpr uint8_t READER_TEXT_SIZE = 1;
   constexpr int16_t UI_MIN_MARGIN = 4;
   constexpr uint8_t PARTIAL_REFRESH_LIMIT = 10;
   constexpr uint16_t WIFI_SETTINGS_FULL_REFRESH_EVERY = 30;
@@ -49,6 +50,9 @@ namespace Config {
   constexpr const char* BOOKS_DIR = "/books";
   constexpr const char* PROGRESS_DIR = "/progress";
   constexpr const char* CURRENT_BOOK_FILE = "/current.txt";
+
+  // Reader buffer size (bytes) used for raw reads per page
+  constexpr int READ_BUFFER_SIZE = 512;
 
   // Battery (set pin to valid ADC input to enable)
   constexpr int BATTERY_ADC_PIN = 1;

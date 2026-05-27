@@ -24,10 +24,10 @@ enum class ScreenId : uint8_t {
 };
 
 struct PageData {
-  std::vector<String> lines;
-  uint32_t startPos = 0;
-  uint32_t endPos = 0;
-  bool eof = false;
+  String text;           // raw text (not pre-wrapped)
+  uint32_t startPos = 0; // byte position in file where this text starts
+  uint32_t endPos = 0;   // byte position in file after this text
+  bool eof = false;      // true if we've reached end of file
 };
 
 struct ReaderState {
@@ -98,38 +98,21 @@ static String titleFromPath(const String& path) {
   return name;
 }
 
-static PageData readPage(File& file, int maxLines, int maxChars) {
+static PageData readPage(File& file) {
+  // Read a raw chunk of bytes (Config::READ_BUFFER_SIZE) from the file and return as text.
   PageData page;
-  page.lines.reserve(maxLines);
   page.startPos = file.position();
 
-  String line;
-  uint32_t lineStartPos = file.position();
+  const int READ_BUFFER = Config::READ_BUFFER_SIZE;
 
-  while (file.available() && static_cast<int>(page.lines.size()) < maxLines) {
-    char c = static_cast<char>(file.read());
-    if (c == '\r') {
-      continue;
-    }
-    if (c == '\n') {
-      page.lines.push_back(line);
-      line = "";
-      lineStartPos = file.position();
-      continue;
-    }
+  // stack allocation is OK for moderate buffer sizes
+  char buffer[READ_BUFFER];
+  int bytesRead = file.read(reinterpret_cast<uint8_t*>(buffer), READ_BUFFER);
 
-    line += c;
-    if (line.length() >= static_cast<size_t>(maxChars)) {
-      page.lines.push_back(line);
-      line = "";
-      lineStartPos = file.position();
-    }
-  }
-
-  if (static_cast<int>(page.lines.size()) >= maxLines && line.length() > 0) {
-    file.seek(lineStartPos);
-  } else if (line.length() > 0 && static_cast<int>(page.lines.size()) < maxLines) {
-    page.lines.push_back(line);
+  if (bytesRead > 0) {
+    page.text = String(reinterpret_cast<char*>(buffer), bytesRead);
+  } else {
+    page.text = "";
   }
 
   page.endPos = file.position();
@@ -248,27 +231,38 @@ static void renderCurrentPage(bool allowPartial) {
   }
   const UiLayout& layout = uiReaderLayout();
   reader.file.seek(reader.pagePos);
-  PageData page = readPage(reader.file, layout.maxLines, layout.charsPerLine);
-  reader.nextPagePos = page.endPos;
+  PageData page = readPage(reader.file);
   storageSaveProgress(reader.path, reader.pagePos);
 
   ReaderView view;
   view.title = titleFromPath(reader.path);
-  view.lines = page.lines;
+  view.text = page.text;
+  view.bytesConsumed = 0;
   view.progressPercent = (reader.size > 0)
                            ? static_cast<uint8_t>(min<uint32_t>(100, (reader.pagePos * 100UL) / reader.size))
                            : 0;
 
   bool usePartial = allowPartial && (partialCount < Config::PARTIAL_REFRESH_LIMIT);
   uiDrawReader(display, view, usePartial);
+  
+  // Set nextPagePos based on how many bytes were actually rendered
+  // This ensures continuous scrolling with no text loss
+  reader.nextPagePos = reader.pagePos + view.bytesConsumed;
+  
+  // Don't go past EOF
+  if (reader.nextPagePos >= reader.size) {
+    reader.nextPagePos = reader.size;
+  }
+  
   if (usePartial) {
     partialCount++;
   } else {
     partialCount = 0;
   }
-  Serial.printf("Rendered page at %u next=%u\n",
+  Serial.printf("Rendered page at %u next=%u consumed=%u\n",
                 static_cast<unsigned>(reader.pagePos),
-                static_cast<unsigned>(reader.nextPagePos));
+                static_cast<unsigned>(reader.nextPagePos),
+                static_cast<unsigned>(view.bytesConsumed));
 }
 
 static void renderNextPage() {
@@ -389,10 +383,7 @@ static void onUploadComplete(const String& path, bool success) {
   }
   Serial.printf("Upload complete: %s\n", path.c_str());
   storageEnsureDirs();
-  // Refresh library but keep the Wi-Fi/settings screen open so the user
-  // can press Exit to stop the portal and return manually.
   refreshLibrary();
-  showScreen(ScreenId::WifiSettings);
   updateActivity();
 }
 

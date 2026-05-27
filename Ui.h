@@ -24,8 +24,9 @@ struct UiLayout {
 
 struct ReaderView {
   String title;
-  std::vector<String> lines;
+  String text;               // raw unwrapped text to render
   uint8_t progressPercent = 0;
+  size_t bytesConsumed = 0;  // set by uiDrawReader: how many bytes of text were actually rendered
 };
 
 void uiInit(EpdDisplay& display);

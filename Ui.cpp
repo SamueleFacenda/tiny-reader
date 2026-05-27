@@ -1,4 +1,5 @@
 #include "Ui.h"
+#include <Fonts/FreeSerif9pt7b.h>
 
 static UiLayout layout;
 static UiLayout readerLayout;
@@ -27,13 +28,14 @@ static void computeReaderLayout(EpdDisplay& display) {
   readerLayout.height = display.height();
   readerLayout.margin = max<int16_t>(2, readerLayout.width / 80);
   readerLayout.headerH = 0;
-  readerLayout.footerH = max<int16_t>(10, readerLayout.height / 14);
+  readerLayout.footerH = 2;
   readerLayout.contentX = readerLayout.margin;
   readerLayout.contentY = readerLayout.margin;
   readerLayout.contentW = readerLayout.width - readerLayout.margin * 2;
   readerLayout.contentH = readerLayout.height - readerLayout.footerH - readerLayout.margin * 2;
-  readerLayout.lineHeight = max<int16_t>(12, static_cast<int16_t>(8 * Config::UI_TEXT_SIZE + 4));
-  int16_t charWidth = max<int16_t>(6, static_cast<int16_t>(6 * Config::UI_TEXT_SIZE));
+  // FreeSerif9pt7b needs more line spacing to avoid overlap
+  readerLayout.lineHeight = max<int16_t>(16, static_cast<int16_t>(8 * Config::READER_TEXT_SIZE + 8));
+  int16_t charWidth = max<int16_t>(6, static_cast<int16_t>(6 * Config::READER_TEXT_SIZE));
   readerLayout.charsPerLine = max<int16_t>(10, readerLayout.contentW / charWidth);
   readerLayout.maxLines = max<int16_t>(1, readerLayout.contentH / readerLayout.lineHeight);
 }
@@ -74,6 +76,8 @@ static String trimToWidth(const String& text, int16_t maxChars) {
   return text.substring(0, maxChars - 3) + "...";
 }
 
+// Note: wrapping now handled directly in uiDrawReader for raw text buffers
+
 void uiInit(EpdDisplay& display) {
   display.init(115200);
   display.setRotation(Config::DISPLAY_ROTATION);
@@ -93,35 +97,123 @@ const UiLayout& uiReaderLayout() {
 
 void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
   const UiLayout& r = readerLayout;
+  display.setTextSize(Config::READER_TEXT_SIZE);
+  display.setFont(&FreeSerif9pt7b);
+  display.setTextWrap(false);
+  
+  int16_t sampleX1 = 0;
+  int16_t sampleY1 = 0;
+  uint16_t sampleW = 0;
+  uint16_t sampleH = 0;
+  display.getTextBounds("jAg", 0, 0, &sampleX1, &sampleY1, &sampleW, &sampleH);
+  int16_t lineBaselineY = r.contentY + 2 - sampleY1;
+  
   if (partial) {
-    display.setPartialWindow(r.contentX, r.contentY, r.contentW, r.contentH + r.footerH);
+    display.setPartialWindow(r.contentX, r.contentY, r.contentW, r.height - r.contentY);
   } else {
     display.setFullWindow();
   }
 
   display.firstPage();
+  size_t bytesRendered = 0;
+  
   do {
     if (!partial) {
       display.fillScreen(GxEPD_WHITE);
     } else {
-      display.fillRect(r.contentX, r.contentY, r.contentW, r.contentH + r.footerH, GxEPD_WHITE);
+      display.fillRect(r.contentX, r.contentY, r.contentW, r.height - r.contentY, GxEPD_WHITE);
     }
 
-    int16_t textY = r.contentY + 2;
-    int16_t maxChars = r.charsPerLine;
+    int16_t visualLineIndex = 0;
+    bytesRendered = 0;
+    size_t charPos = 0;  // position in the text string
 
-    for (size_t i = 0; i < view.lines.size(); ++i) {
-      display.setCursor(r.contentX, textY + static_cast<int16_t>(i) * r.lineHeight);
-      display.print(trimToWidth(view.lines[i], maxChars));
+    // Parse text into words and render, preserving explicit '\n' as hard line breaks
+    while (charPos < view.text.length() && visualLineIndex < r.maxLines) {
+      // If we hit an explicit newline, consume it and advance a visual line
+      if (view.text[charPos] == '\n') {
+        charPos++;
+        bytesRendered = charPos;
+        visualLineIndex++;
+        continue;
+      }
+
+      // Skip spaces and tabs (but not newlines)
+      while (charPos < view.text.length() && (view.text[charPos] == ' ' || view.text[charPos] == '\t' || view.text[charPos] == '\r')) {
+        charPos++;
+      }
+
+      if (charPos >= view.text.length()) break;
+
+      // Collect words that fit on this line
+      String lineText = "";
+      size_t lineStartPos = charPos;
+
+      while (charPos < view.text.length() && visualLineIndex < r.maxLines) {
+        // If next char is newline, consume it and stop adding words
+        if (view.text[charPos] == '\n') {
+          // consume newline but don't include it in lineText
+          charPos++;
+          bytesRendered = charPos;
+          break;
+        }
+
+        // Find next word boundary (space, tab or newline)
+        size_t wordStart = charPos;
+        while (charPos < view.text.length() && view.text[charPos] != ' ' && view.text[charPos] != '\t' && view.text[charPos] != '\n' && view.text[charPos] != '\r') {
+          charPos++;
+        }
+
+        String word = view.text.substring(wordStart, charPos);
+        String candidateLine = lineText + (lineText.isEmpty() ? "" : " ") + word;
+
+        int16_t x1 = 0, y1 = 0;
+        uint16_t w = 0, h = 0;
+        display.getTextBounds(candidateLine.c_str(), 0, 0, &x1, &y1, &w, &h);
+
+        if (static_cast<int16_t>(w) > r.contentW && !lineText.isEmpty()) {
+          // Word doesn't fit on this line; keep it for next visual line
+          // rewind charPos to the start of the word for the next iteration
+          charPos = wordStart;
+          break;
+        }
+
+        // Append word to the line
+        lineText = candidateLine;
+        bytesRendered = charPos;
+
+        // Skip spaces/tabs but stop at newline
+        while (charPos < view.text.length() && (view.text[charPos] == ' ' || view.text[charPos] == '\t' || view.text[charPos] == '\r')) {
+          charPos++;
+        }
+      }
+
+      // Render the line if it has content
+      if (!lineText.isEmpty()) {
+        int16_t lineX1 = 0;
+        int16_t lineY1 = 0;
+        uint16_t lineW = 0;
+        uint16_t lineH = 0;
+        display.getTextBounds(lineText.c_str(), 0, 0, &lineX1, &lineY1, &lineW, &lineH);
+        display.setCursor(r.contentX - lineX1, lineBaselineY + static_cast<int16_t>(visualLineIndex) * r.lineHeight);
+        display.print(lineText);
+
+        visualLineIndex++;
+      }
     }
 
-    String progress = String(view.progressPercent) + "%";
-    int16_t footerY = r.height - r.lineHeight;
-    int16_t footerX = r.contentX;
-    display.setCursor(footerX, footerY);
-    display.print(progress);
+    int16_t barY = r.height - 1;
+    int16_t barW = map(view.progressPercent, 0, 100, 0, r.contentW);
+    display.fillRect(r.contentX, barY, r.contentW, 1, GxEPD_WHITE);
+    display.fillRect(r.contentX, barY, barW, 1, GxEPD_BLACK);
   } while (display.nextPage());
 
+  // Report how many bytes were actually rendered
+  const_cast<ReaderView&>(view).bytesConsumed = bytesRendered;
+
+  display.setTextSize(Config::UI_TEXT_SIZE);
+  display.setFont(nullptr);
+  display.setTextWrap(true);
   display.powerOff();
 }
 
