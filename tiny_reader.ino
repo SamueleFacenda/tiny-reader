@@ -49,6 +49,7 @@ static uint8_t partialCount = 0;
 static std::vector<BookInfo> libraryBooks;
 static int libraryIndex = 0;
 static int libraryScroll = 0;
+RTC_DATA_ATTR static uint8_t sleepResumeMode = 0; // 0=unknown, 1=reader, 2=menu
 
 static void updateActivity() {
   lastActivity = millis();
@@ -427,7 +428,7 @@ static bool ensureStorageReady() {
 }
 
 static void maybeDeepSleep() {
-  if (screen != ScreenId::Reader) {
+  if (screen == ScreenId::Error) {
     return;
   }
   if (webPortalActive()) {
@@ -437,7 +438,8 @@ static void maybeDeepSleep() {
     return;
   }
   Serial.println("Entering deep sleep");
-  if (reader.file) {
+  sleepResumeMode = (screen == ScreenId::Reader) ? 1 : 2;
+  if (screen == ScreenId::Reader && reader.file) {
     storageSaveProgress(reader.path, reader.pagePos);
   }
   display.hibernate();
@@ -473,12 +475,14 @@ void setup() {
 
   String current = storageGetCurrentBook();
   bool wokeFromSleep = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0);
-  if (wokeFromSleep && current.length() > 0) {
+  if (wokeFromSleep && current.length() > 0 && sleepResumeMode == 1) {
     openBook(current, false);
     showScreen(ScreenId::Reader);
   } else {
     showScreen(ScreenId::MenuLibrary);
   }
+
+  sleepResumeMode = 0;
 
   lastActivity = millis();
 }
