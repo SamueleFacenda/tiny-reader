@@ -34,8 +34,8 @@ namespace Config {
   constexpr uint16_t WIFI_SETTINGS_FULL_REFRESH_EVERY = 30;
 
   // Timing
-  constexpr uint32_t SERVER_TIMEOUT_MS = 5UL * 60UL * 1000UL;
-  constexpr uint32_t INACTIVITY_SLEEP_MS = 30UL * 1000UL;
+  constexpr uint32_t SERVER_TIMEOUT_MS = 15UL * 60UL * 1000UL;
+  constexpr uint32_t INACTIVITY_SLEEP_MS = 1UL * 60UL * 1000UL;
   constexpr uint32_t LONG_PRESS_MS = 900UL;
   constexpr uint32_t FS_FORMAT_HOLD_MS = 2500UL;
 
