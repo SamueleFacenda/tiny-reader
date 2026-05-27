@@ -113,9 +113,10 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
   } else {
     display.setFullWindow();
   }
-
+  
   display.firstPage();
   size_t bytesRendered = 0;
+  const size_t textLen = view.text.length(); // Cache length to save method calls
   
   do {
     if (!partial) {
@@ -126,89 +127,72 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
 
     int16_t visualLineIndex = 0;
     bytesRendered = 0;
-    size_t charPos = 0;  // position in the text string
+    size_t charPos = 0;
 
-    // Parse text into words and render, preserving explicit '\n' as hard line breaks
-    while (charPos < view.text.length() && visualLineIndex < r.maxLines) {
-      // If we hit an explicit newline, consume it and advance a visual line
-      if (view.text[charPos] == '\n') {
-        charPos++;
-        bytesRendered = charPos;
-        visualLineIndex++;
-        continue;
-      }
-
-      // Skip spaces and tabs (but not newlines)
-      while (charPos < view.text.length() && (view.text[charPos] == ' ' || view.text[charPos] == '\t' || view.text[charPos] == '\r')) {
-        charPos++;
-      }
-
-      if (charPos >= view.text.length()) break;
-
-      // Collect words that fit on this line
+    // Text Parsing and Rendering
+    while (charPos < textLen && visualLineIndex < r.maxLines) {
       String lineText = "";
-      size_t lineStartPos = charPos;
+      int16_t lastLineX1 = 0; // Cached to avoid recalculating text bounds
 
-      while (charPos < view.text.length() && visualLineIndex < r.maxLines) {
-        // If next char is newline, consume it and stop adding words
+      while (charPos < textLen) {
+        // Skip spaces, tabs, and carriage returns
+        while (charPos < textLen && (view.text[charPos] == ' ' || view.text[charPos] == '\t' || view.text[charPos] == '\r')) {
+          charPos++;
+        }
+
+        if (charPos >= textLen) break;
+
+        // If explicit newline, consume it, save progress, and move to next visual line
         if (view.text[charPos] == '\n') {
-          // consume newline but don't include it in lineText
           charPos++;
           bytesRendered = charPos;
-          break;
+          break; 
         }
 
-        // Find next word boundary (space, tab or newline)
-        size_t wordStart = charPos;
-        while (charPos < view.text.length() && view.text[charPos] != ' ' && view.text[charPos] != '\t' && view.text[charPos] != '\n' && view.text[charPos] != '\r') {
-          charPos++;
+        // Find the end of the current word
+        size_t wordEnd = charPos;
+        while (wordEnd < textLen && view.text[wordEnd] != ' ' && view.text[wordEnd] != '\t' && view.text[wordEnd] != '\n' && view.text[wordEnd] != '\r') {
+          wordEnd++;
         }
 
-        String word = view.text.substring(wordStart, charPos);
-        String candidateLine = lineText + (lineText.isEmpty() ? "" : " ") + word;
-
+        // Build and measure a test line
+        String word = view.text.substring(charPos, wordEnd);
+        String candidateLine = lineText.isEmpty() ? word : lineText + " " + word;
         int16_t x1 = 0, y1 = 0;
         uint16_t w = 0, h = 0;
         display.getTextBounds(candidateLine.c_str(), 0, 0, &x1, &y1, &w, &h);
 
+        // If the word doesn't fit (and it's not the only word on the line), leave it for the next line
         if (static_cast<int16_t>(w) > r.contentW && !lineText.isEmpty()) {
-          // Word doesn't fit on this line; keep it for next visual line
-          // rewind charPos to the start of the word for the next iteration
-          charPos = wordStart;
-          break;
+          break; 
         }
 
-        // Append word to the line
+        // Accept the word into the current line
         lineText = candidateLine;
+        lastLineX1 = x1;       // Save x1 offset for printing later
+        charPos = wordEnd;     // Advance pointer past this word
         bytesRendered = charPos;
-
-        // Skip spaces/tabs but stop at newline
-        while (charPos < view.text.length() && (view.text[charPos] == ' ' || view.text[charPos] == '\t' || view.text[charPos] == '\r')) {
-          charPos++;
-        }
       }
 
-      // Render the line if it has content
+      // Render the compiled line (if any text was collected)
       if (!lineText.isEmpty()) {
-        int16_t lineX1 = 0;
-        int16_t lineY1 = 0;
-        uint16_t lineW = 0;
-        uint16_t lineH = 0;
-        display.getTextBounds(lineText.c_str(), 0, 0, &lineX1, &lineY1, &lineW, &lineH);
-        display.setCursor(r.contentX - lineX1, lineBaselineY + static_cast<int16_t>(visualLineIndex) * r.lineHeight);
+        display.setCursor(r.contentX - lastLineX1, lineBaselineY + static_cast<int16_t>(visualLineIndex) * r.lineHeight);
         display.print(lineText);
-
-        visualLineIndex++;
       }
+
+      // Always advance the line index (handles both printed lines and explicit empty \n lines)
+      visualLineIndex++;
     }
 
+    // Render Progress Bar
     int16_t barY = r.height - 1;
     int16_t barW = map(view.progressPercent, 0, 100, 0, r.contentW);
     display.fillRect(r.contentX, barY, r.contentW, 1, GxEPD_WHITE);
     display.fillRect(r.contentX, barY, barW, 1, GxEPD_BLACK);
+
   } while (display.nextPage());
 
-  // Report how many bytes were actually rendered
+  // Report consumed bytes
   const_cast<ReaderView&>(view).bytesConsumed = bytesRendered;
 
   display.setTextSize(Config::UI_TEXT_SIZE);
