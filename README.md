@@ -2,6 +2,13 @@
 
 > A pocket sized cheap e book reader
 
+## TODO
+- Delete book menu
+- Go back without history need
+- Better wifi ui
+- Battery percentage real (not possible)
+- Sleep screen
+- Update only timer in wifi view
 
 ## Documentation
 

@@ -1,5 +1,5 @@
 #include "Ui.h"
-#include <Fonts/FreeSerif9pt7b.h>
+#include "FreeSerif9pt8b.h"
 
 static UiLayout layout;
 static UiLayout readerLayout;
@@ -33,7 +33,7 @@ static void computeReaderLayout(EpdDisplay& display) {
   readerLayout.contentY = readerLayout.margin;
   readerLayout.contentW = readerLayout.width - readerLayout.margin * 2;
   readerLayout.contentH = readerLayout.height - readerLayout.footerH - readerLayout.margin * 2;
-  // FreeSerif9pt7b needs more line spacing to avoid overlap
+  // FreeSerif9pt8b needs more line spacing to avoid overlap
   readerLayout.lineHeight = max<int16_t>(16, static_cast<int16_t>(8 * Config::READER_TEXT_SIZE + 8));
   int16_t charWidth = max<int16_t>(6, static_cast<int16_t>(6 * Config::READER_TEXT_SIZE));
   readerLayout.charsPerLine = max<int16_t>(10, readerLayout.contentW / charWidth);
@@ -98,7 +98,7 @@ const UiLayout& uiReaderLayout() {
 void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
   const UiLayout& r = readerLayout;
   display.setTextSize(Config::READER_TEXT_SIZE);
-  display.setFont(&FreeSerif9pt7b);
+  display.setFont(&FreeSerif9pt8b);
   display.setTextWrap(false);
   
   int16_t sampleX1 = 0;

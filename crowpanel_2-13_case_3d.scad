@@ -44,7 +44,7 @@ pcb_w = 63.0;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
 // pcb_h = 10.7; // real height
 // pcb_h = 10.7 + 6.0;    // battery plus full pcb
-pcb_h = 6.5 + 6.0 + 0.5;    // battery plus pcb with ports removed
+pcb_h = 6.5 + 6.0 + 1.0;    // battery plus pcb with ports removed
 pcb_r_h = 6.8; // Height of the buttons side
 pcb_l_h = 2.5; // Height of the left side
 
