@@ -24,7 +24,7 @@ Buttons are rounded and becomes thicker when selected.
 and storage used. `Ok` updates the view.
 - `Wifi_Settings` : on the right of the menu there are wifi info (e.g. IP address, ssid, password)
 along an updating uptime counter (partially refreshed).
-- `Menu_Library` : on the right of the menu there is a list of available books. It can be navigated
+- `Choose_Book` : on the right of the menu there is a list of available books. It can be navigated
 with up and down, a book is selected with `Ok`. Each book is a button, there is a vertical progress
 visualizer on the right, in case the books does not fit on the screen. Partial updates are used to
 scroll up and down (highlight a different button and change right progress bar).
