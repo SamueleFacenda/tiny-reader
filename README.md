@@ -9,6 +9,7 @@
 - Battery percentage real (not possible)
 - Sleep screen
 - Update only timer in wifi view
+- Store compressed books
 
 ## Documentation
 
