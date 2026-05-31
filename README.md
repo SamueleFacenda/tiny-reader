@@ -82,6 +82,9 @@ Features:
 - low battery usage thanks to e-ink display and automatic deep sleep
 - custom font with latin-1 encoding support
 - fast page turning thanks to partial refreshes
+- high readability: the font is actually bigger than a normal book font,
+combined with a small display which requires minimal eye movement it results
+in an high read comfort.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
