@@ -12,6 +12,9 @@
 
 <!-- PROJECT LOGO -->
 <div align="center">
+    <a href="https://github.com/SamueleFacenda/tiny-reader">
+        <img src="media/handheld.jpg" alt="Logo" width="256" height="172">
+    </a>
     <h3 align="center">TinyReader</h3>
     <p align="center">
         TinyReader is a compact, offline-first e-book reader for the CrowPanel ESP32 2.13 E-Paper HMI display.
@@ -48,12 +51,14 @@
                 <li><a href="#installation">Installation</a></li>
             </ul>
         </li>
+        <li><a href="#docs">Docs</a></li>
         <li><a href="#usage">Usage</a></li>
         <li><a href="#roadmap">Roadmap</a></li>
         <li><a href="#contributing">Contributing</a></li>
         <li><a href="#license">License</a></li>
         <li><a href="#contact">Contact</a></li>
         <li><a href="#acknowledgments">Acknowledgments</a></li>
+        <li><a href="#star-history">Star History</a></li>
     </ol>
 </details>
 
@@ -65,10 +70,6 @@
 TinyReader is a small e-book reader built around a CrowPanel ESP32 2.13 E-Paper HMI display. It is intended for reading plain text files, storing books locally, and transferring content over a built-in Wi-Fi access point.
 
 The project is experimental and practical rather than polished. Mechanical fit, battery choice, and power behavior depend on the exact hardware configuration and enclosure you build around it.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=SamueleFacenda/tiny-reader&type=Date)](https://www.star-history.com/#SamueleFacenda/tiny-reader&Date)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -118,6 +119,14 @@ The repository includes a Nix flake, so the Arduino toolchain and project depend
 The flake provides the Arduino CLI, ESP32 board packages, Python serial support, and OpenSCAD.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+
+## Docs
+
+* [tiny_reader.ino](tiny_reader.ino) is the Arduino entrypoint. It wires the display, input, storage, and Wi-Fi flow together.
+* [tiny_reader_2-13_case.scad](tiny_reader_2-13_case.scad) is the OpenSCAD enclosure model.
+* The OpenSCAD model references a CrowPanel board STL for fit checking and conversion. The board asset can be converted from the vendor archive at [00-2-13_view_asm.rar](https://github.com/Elecrow-RD/CrowPanel-ESP32-2.13-E-paper-HMI-Display-with-122-250/blob/ca6f62e88c83c108be3904d36e00ded4f55bb68f/3D%20file/00-2-13_view_asm.rar).
 
 
 
@@ -195,6 +204,12 @@ Use GitHub issues for bugs, feature requests, and build questions.
 * [Arduino CLI](https://arduino.github.io/arduino-cli/latest/)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=SamueleFacenda/tiny-reader&type=Date)](https://www.star-history.com/#SamueleFacenda/tiny-reader&Date)
 
 
 
