@@ -48,9 +48,10 @@
           packages.arduino-cli = arduinoCli;
 
           devShells.default = pkgs.mkShell {
-            buildInputs = with pkgs; [ arduinoCli python3Packages.pyserial ];
-            nativeBuildInputs = with pkgs; [
-              openscad
+            packages = with pkgs; [ 
+              arduinoCli 
+              python3Packages.pyserial 
+              openscad 
             ];
           };
        }
