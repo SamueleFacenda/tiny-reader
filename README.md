@@ -244,12 +244,6 @@ Use GitHub issues for bugs, feature requests, and build questions.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=SamueleFacenda/tiny-reader&type=Date)](https://www.star-history.com/#SamueleFacenda/tiny-reader&Date)
-
-
 <!-- GALLERY -->
 ## Gallery
 
@@ -258,6 +252,11 @@ Use GitHub issues for bugs, feature requests, and build questions.
 
 ### TinyReader internal design
 ![board opened](media/open.jpg)
+
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=SamueleFacenda/tiny-reader&type=Date)](https://www.star-history.com/#SamueleFacenda/tiny-reader&Date)
 
 
 <!-- MARKDOWN LINKS & IMAGES -->
