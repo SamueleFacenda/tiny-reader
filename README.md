@@ -273,3 +273,5 @@ Use GitHub issues for bugs, feature requests, and build questions.
 [issues-url]: https://github.com/SamueleFacenda/tiny-reader/issues
 [license-shield]: https://img.shields.io/github/license/SamueleFacenda/tiny-reader.svg?style=for-the-badge
 [license-url]: https://github.com/SamueleFacenda/tiny-reader/blob/main/LICENSE.md
+[workflow-shield]: https://img.shields.io/github/actions/workflow/status/SamueleFacenda/tiny-reader/main.yml?style=for-the-badge
+[workflow-url]: https://github.com/SamueleFacenda/tiny-reader/actions/workflows/main.yml
