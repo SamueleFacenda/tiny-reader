@@ -2,11 +2,11 @@
 #include <LittleFS.h>
 #include <vector>
 
-#include "Config.h"
-#include "Input.h"
-#include "Storage.h"
-#include "Ui.h"
-#include "WebPortal.h"
+#include "src/Config.h"
+#include "src/Input.h"
+#include "src/Storage.h"
+#include "src/Ui.h"
+#include "src/WebPortal.h"
 
 #include <esp_sleep.h>
 #include <esp_system.h>
