@@ -17,9 +17,9 @@
     </a>
     <h3 align="center">TinyReader</h3>
     <p align="center">
-        TinyReader is a compact, offline-first e-book reader for the CrowPanel ESP32 2.13 E-Paper HMI display.
+        TinyReader is a small and easy to assembly e-book reader. 
         <br />
-        It reads plain text books from local storage, supports Wi-Fi upload, and is designed for simple low-power use.
+        It is intended for mobile reading, it's highly pocketable and supports wireless ebooks transfer. 
         <br />
         <a href="https://github.com/SamueleFacenda/tiny-reader"><strong>Explore the docs »</strong></a>
         <br />
@@ -73,7 +73,8 @@
 ![e reader ui](media/ui.jpg)
 </div>
 
-TinyReader is a small e-book reader built around a CrowPanel ESP32 2.13 E-Paper HMI display board. It is intended for reading plain text files, storing books locally, and transferring content over a built-in Wi-Fi access point.
+TinyReader is a small and easy to assembly e-book reader. It is intended for mobile reading, it's 
+highly pocketable and supports wireless ebooks transfer. 
 
 The project is experimental and practical rather than polished. Mechanical fit, battery choice, and power behavior depend on the exact hardware configuration and enclosure you build around it.
 
@@ -170,6 +171,7 @@ capacity)
 2. Store plain text books on the device or upload them through the Wi-Fi page.
 3. Use the physical buttons to navigate the library, reading view, and status screens.
 4. Let the device enter deep sleep when idle to preserve battery life.
+5. Wake from the deep sleep using the `home` button.
 
 See the source files for the screen flow and button mapping.
 
