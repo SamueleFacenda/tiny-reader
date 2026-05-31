@@ -67,6 +67,11 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
+<div style="width:40%; margin: auto;">
+
+![e reader ui](media/ui.jpg)
+</div>
+
 TinyReader is a small e-book reader built around a CrowPanel ESP32 2.13 E-Paper HMI display. It is intended for reading plain text files, storing books locally, and transferring content over a built-in Wi-Fi access point.
 
 The project is experimental and practical rather than polished. Mechanical fit, battery choice, and power behavior depend on the exact hardware configuration and enclosure you build around it.
