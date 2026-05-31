@@ -43,7 +43,7 @@ namespace Config {
   constexpr uint32_t MAX_UPLOAD_BYTES = 1500UL * 1024UL;
 
   // WiFi access point
-  constexpr const char* WIFI_SSID = "PocketReader";
+  constexpr const char* WIFI_SSID = "TinyReader";
   constexpr const char* WIFI_PASS = "12345678";
 
   // Storage paths

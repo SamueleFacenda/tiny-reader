@@ -6,7 +6,7 @@
 - Delete book menu
 - Go back without history need
 - Better wifi ui
-- Battery percentage real (not possible)
+- Battery percentage real (not possible with current board)
 - Sleep screen
 - Update only timer in wifi view
 - Store compressed books

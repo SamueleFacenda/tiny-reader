@@ -18,7 +18,7 @@ static const char* uploadPage = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <body>
-<h2>PocketReader Upload</h2>
+<h2>TinyReader Upload</h2>
 <p>Upload a TXT file to add it to the library.</p>
 <form method="POST" action="/upload" enctype="multipart/form-data">
   <input type="file" name="file">
