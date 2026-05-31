@@ -24,7 +24,7 @@
         <a href="https://github.com/SamueleFacenda/tiny-reader"><strong>Explore the docs »</strong></a>
         <br />
         <br />
-        <a href="https://github.com/SamueleFacenda/tiny-reader">View Demo</a>
+        <a href="#gallery">View Images</a>
         &middot;
         <a href="https://github.com/SamueleFacenda/tiny-reader/issues">Report Bug</a>
         &middot;
