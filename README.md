@@ -59,6 +59,7 @@
         <li><a href="#contact">Contact</a></li>
         <li><a href="#acknowledgments">Acknowledgments</a></li>
         <li><a href="#star-history">Star History</a></li>
+        <li><a href="#gallery">Gallery</a></li>
     </ol>
 </details>
 
@@ -72,9 +73,14 @@
 ![e reader ui](media/ui.jpg)
 </div>
 
-TinyReader is a small e-book reader built around a CrowPanel ESP32 2.13 E-Paper HMI display. It is intended for reading plain text files, storing books locally, and transferring content over a built-in Wi-Fi access point.
+TinyReader is a small e-book reader built around a CrowPanel ESP32 2.13 E-Paper HMI display board. It is intended for reading plain text files, storing books locally, and transferring content over a built-in Wi-Fi access point.
 
 The project is experimental and practical rather than polished. Mechanical fit, battery choice, and power behavior depend on the exact hardware configuration and enclosure you build around it.
+
+Features:
+- low battery usage thanks to e-ink display and automatic deep sleep
+- custom font with latin-1 encoding support
+- fast page turning thanks to partial refreshes
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -90,6 +96,14 @@ The project is experimental and practical rather than polished. Mechanical fit, 
 * ArduinoJson
 * OpenSCAD for enclosure work
 
+### Hardware and cost
+
+TinyReader primary goals were to build a pocketable and cheap ebooks reader.
+The total cost is lower than 30€ (20€ without expeditions), the components used are:
+- [CrowPanel ESP32 2.13 display board](https://www.elecrow.com/crowpanel-esp32-2-13-e-paper-hmi-display-with-122-250-resolution-black-white-color-driven-by-spi-interface.html): 11.9$
+- A 700/800mAh LiPo battery: <10€
+- 3d printed enclosure: <0.1€
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
@@ -102,8 +116,7 @@ The repository includes a Nix flake, so the Arduino toolchain and project depend
 ### Prerequisites
 
 * Nix with flakes enabled
-* A compatible ESP32 development target
-* The CrowPanel ESP32 2.13 E-Paper HMI display
+* The CrowPanel ESP32 2.13 E-Paper HMI display board
 * A suitable LiPo battery
 
 ### Installation
@@ -120,8 +133,23 @@ The repository includes a Nix flake, so the Arduino toolchain and project depend
      ```sh
      arduino-cli compile --fqbn esp32:esp32:esp32 tiny_reader.ino
      ```
+4. Flash the firmware to the board (port may vary)
+    ```sh
+        arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3 --verbose 
+    ```
 
 The flake provides the Arduino CLI, ESP32 board packages, Python serial support, and OpenSCAD.
+
+### Assembly
+
+No tool is actually required for the device assembly. Some more work might be required depending on
+the battery size.
+
+The board features a non so common SH1.0-2Pin battery socket so an adaptor might be necessary.
+
+If you are using a 603040 battery you might want to remove the UART and GPIO ports to reduce the
+device height. For 602060 batteries it's not necessary, they fit between the ports (but have smaller
+capacity)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -204,6 +232,7 @@ Use GitHub issues for bugs, feature requests, and build questions.
 <!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
 
+* [Original case designer](https://www.printables.com/model/1566902-case-for-crowpanel-213-epaper)
 * [CrowPanel ESP32 2.13 E-Paper HMI display](https://example.com/tinyreader-crowpanel-esp32-2-13)
 * [Nix](https://nixos.org/)
 * [Arduino CLI](https://arduino.github.io/arduino-cli/latest/)
@@ -216,6 +245,15 @@ Use GitHub issues for bugs, feature requests, and build questions.
 
 [![Star History Chart](https://api.star-history.com/svg?repos=SamueleFacenda/tiny-reader&type=Date)](https://www.star-history.com/#SamueleFacenda/tiny-reader&Date)
 
+
+<!-- GALLERY -->
+## Gallery
+
+### TinyReader buttons interface
+![buttons view](media/buttons.jpg)
+
+### TinyReader internal design
+![board opened](media/open.jpg)
 
 
 <!-- MARKDOWN LINKS & IMAGES -->
