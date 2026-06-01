@@ -140,7 +140,7 @@ The repository includes a Nix flake, so the Arduino toolchain and project depend
      ```
 4. Flash the firmware to the board (port may vary)
     ```sh
-        arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3 --verbose 
+    arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3 --verbose 
     ```
 
 The flake provides the Arduino CLI, ESP32 board packages, Python serial support, and OpenSCAD.
