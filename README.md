@@ -118,6 +118,8 @@ The total cost is lower than 30€ (20€ without expeditions), the components u
 
 The repository includes a Nix flake, so the Arduino toolchain and project dependencies can be gathered with `nix develop`.
 
+The scad source is available here or the rendered stl can be downloaded [directly from printables](https://www.printables.com/model/1741918-tinyreader-case-elecrow-crowpanel-esp32-213).
+
 ### Prerequisites
 
 * Nix with flakes enabled
@@ -163,7 +165,8 @@ capacity)
 ## Docs
 
 * [tiny-reader.ino](tiny-reader.ino) is the Arduino entrypoint. It wires the display, input, storage, and Wi-Fi flow together.
-* [tiny_reader_2-13_case.scad](tiny_reader_2-13_case.scad) is the OpenSCAD enclosure model.
+* [tiny_reader_2-13_case.scad](tiny_reader_2-13_case.scad) is the OpenSCAD enclosure model. You can find the rendered version
+[here on pritables](https://www.printables.com/model/1741918-tinyreader-case-elecrow-crowpanel-esp32-213).
 * The OpenSCAD model references a CrowPanel board STL for fit checking and conversion. The board asset can be converted from the vendor archive at [00-2-13_view_asm.rar](https://github.com/Elecrow-RD/CrowPanel-ESP32-2.13-E-paper-HMI-Display-with-122-250/blob/ca6f62e88c83c108be3904d36e00ded4f55bb68f/3D%20file/00-2-13_view_asm.rar).
 * The firware is built with customization in mind, take a look at [the config file](src/Config.h) for
 all the available customization options (other boards might be supported as well).
