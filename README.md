@@ -106,7 +106,7 @@ in an high read comfort.
 TinyReader primary goals were to build a pocketable and cheap ebooks reader.
 The total cost is lower than 30€ (20€ without expeditions), the components used are:
 - [CrowPanel ESP32 2.13 display board](https://www.elecrow.com/crowpanel-esp32-2-13-e-paper-hmi-display-with-122-250-resolution-black-white-color-driven-by-spi-interface.html): 11.9$
-- A 700/800mAh LiPo battery: <10€
+- A 700/800mAh LiPo battery (602060 or 603040): <10€
 - 3d printed enclosure: <0.1€
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
