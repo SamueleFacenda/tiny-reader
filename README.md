@@ -198,6 +198,7 @@ See the source files for the screen flow and button mapping.
 - Update only the necessary parts of the screen during Wi-Fi uptime refreshes.
 - Evaluate compressed book storage to reduce flash usage.
 - Reduce friction in navigation and return paths between screens.
+- Investigate ghosting problems in sunlight.
 
 See the [open issues](https://github.com/SamueleFacenda/tiny-reader/issues) for the current list of planned work.
 
