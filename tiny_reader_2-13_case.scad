@@ -39,8 +39,30 @@ module corners(offset_val = 2.2) {
     translate([inset, total_d - inset, 0]) children();
 }
 
+buttons_base_w = 6;
+buttons_base_d = 4;
+buttons_base_h = 1.0;
+buttons_base_tolerance = 0.2;
+
+module tactile_button() {
+    union() {
+        cylinder(h=2.0 + buttons_base_tolerance, r=(buttons_base_d-buttons_base_tolerance)/2);
+        translate([0,0,buttons_base_tolerance + 2.0])
+            minkowski() {
+                cube([EPS, 2, EPS], center=true);
+                difference() {
+                    sphere(r=buttons_base_w/2);
+                    translate([0,0,-buttons_base_w/2])
+                        cube([buttons_base_w, buttons_base_w, buttons_base_w], center=true); 
+                }
+            }
+        translate([-(buttons_base_w - buttons_base_tolerance)/2,-(buttons_base_d - buttons_base_tolerance)/2,-buttons_base_h])
+            cube([buttons_base_w - buttons_base_tolerance, buttons_base_d - buttons_base_tolerance, buttons_base_h]);
+    }
+}
+
 // --- BOARD SPECIFICATIONS ---
-pcb_w = 63.0;         // PCB Width
+pcb_w = 62.8;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
 // pcb_h = 10.7; // real height
 // pcb_h = 10.7 + 6.0;    // battery plus full pcb
@@ -51,7 +73,7 @@ pcb_l_h = 2.5; // Height of the left side
 // --- FRONT BEZEL (SCREEN EDGES) ---
 bezel_l = 4.5;         // Left bezel
 bezel_r = 9.8;         // Right bezel
-bezel_tb = 3.3;        // Top/Bottom bezel
+bezel_tb = 3.0;        // Top/Bottom bezel
 bezel_thickness = 0.8; // Front wall thickness
 
 // --- USB-C POSITION ---
@@ -66,6 +88,8 @@ usb_corner_r = 1.5;
 buttons_w = 31.0; // width with some margin
 buttons_from_bezel = 3.0; // distance from the top (without bezel) to buttons top
 buttons_h = 4.0; // height of the buttons area
+buttons_from_side = 1.4; // from the aperture side to the side buttons
+side_buttons_h = 0.6; // height of the side buttons
 
 // Opening hole on the base
 opening_w = 10.0;
@@ -98,7 +122,7 @@ total_h = pcb_h + bezel_thickness;
 // --- MAIN BODY (CASE) ---
 module main_body() {
     if ($preview) {
-        translate([31.6 + wall, 15.6 + wall, pcb_h - 1.7])
+        translate([31.8 + wall, 15.85 + wall, pcb_h - 1.7])
             rotate([90,0,90])
                 #import("output.stl");
     }
@@ -115,11 +139,21 @@ module main_body() {
         translate([wall + bezel_l, wall + bezel_tb, total_h - bezel_thickness])
             rounded_trapezoid([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb], bezel_thickness, bezel_thickness);
 
-        // Buttons Cutout (on the left side, centered vertically)
-        translate([wall, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel])
-            rotate([-90, 0, 90])
-                rounded_trapezoid([buttons_w, buttons_h], wall, buttons_h/2 - EPS, off= wall * 1.5);
 
+        // Side buttons slot
+        translate([wall - buttons_base_h*2 - side_buttons_h, (total_d - buttons_w) / 2 + buttons_from_side, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            union() {
+                cube([buttons_base_h*3, buttons_base_w, buttons_base_d]);
+                translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
+                    cube([buttons_base_h*2, buttons_base_d, buttons_base_w]);
+            }
+        translate([wall - buttons_base_h*2 - side_buttons_h, (total_d + buttons_w) / 2 - buttons_from_side - buttons_base_w, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            union() {
+                cube([buttons_base_h*3, buttons_base_w, buttons_base_d]);
+                translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
+                    cube([buttons_base_h*2, buttons_base_d, buttons_base_w]);
+            }
+    
         // USB-C Cutout
         translate([wall + usb_x_pos - usb_w/2, total_d -wall, total_h - bezel_thickness - usb_from_top + usb_h/2])
             rotate([-90, 0, 0])
@@ -180,3 +214,7 @@ color("RoyalBlue") main_body();
 // translate([0, 0, -corner_r]) // fit check
 translate([0, -total_d - 10, 0]) 
     color("DimGray") back_cover();
+
+
+translate([0, -total_d - 20, 0]) 
+    color("DarkRed") tactile_button();
