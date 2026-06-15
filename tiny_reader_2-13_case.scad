@@ -200,9 +200,15 @@ module back_cover() {
                         rounded_cube([total_w, total_d, base_h+EPS], base_h);
                 
                 // Locking Lip (Male)
-                translate([wall/2 + tolerance, wall/2 + tolerance, 0])
-                    cube([total_w - wall - 2*tolerance, total_d - wall - 2*tolerance, 1.0]);
-
+                difference() {
+                    translate([wall/2 + tolerance, wall/2 + tolerance, 0])
+                        cube([total_w - wall - 2*tolerance, total_d - wall - 2*tolerance, 1.0]);
+                    // More space for the battery
+                    $fn = 200; // We are doing very big cylinders
+                    translate([total_w/2 + wall, total_d, 200]) // the higher this number, the wider the battery smooth space
+                        rotate([90,0,0])
+                            cylinder(h=total_d, r=200);
+                }
                 // Pins with spherical snaps
                 corners(1.8) {
                     cylinder(pin_h, d=pin_dia);
