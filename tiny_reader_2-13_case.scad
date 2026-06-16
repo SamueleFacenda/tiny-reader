@@ -99,10 +99,10 @@ opening_r = 2.0;
 
 // Lever button
 lever_button_h = 5.0;
-lever_button_w = 4.0;
+lever_button_w = 3.4;
 lever_button_d = buttons_base_d;
-lever_button_slope_h = 3.0;
-lever_button_movement = 2.0; // How much can the lever move left and right
+lever_button_slope_h = 3.5;
+lever_button_movement = 2.3; // How much can the lever move left and right
 lever_button_base_margin = 1.0;
 lever_button_base_h = 0.6;
 lever_button_x = 1.0; // How into the wall must the button stay
@@ -254,7 +254,7 @@ module lever_button() {
                         cube([EPS, lever_button_d, EPS]);
                     translate([lever_button_w/2, lever_button_d, -lever_button_slope_h/2])
                         rotate([90,0,0])
-                            cylinder(h=lever_button_d, r=lever_button_slope_h/2);
+                            cylinder(h=lever_button_d, r=lever_button_slope_h/4);
                 }
         }
         translate([2*lever_button_movement + lever_button_w/2 - lever_w/2, lever_button_base_margin + lever_vertical_space, -ZERO_GAP])
@@ -274,9 +274,9 @@ translate([0, -total_d - 20, buttons_base_h])
     color("Red") tactile_button();
 translate([0, -total_d - 30, buttons_base_h]) 
     color("Red") tactile_button();
-// translate([0, -total_d - 50, 0])
-translate([lever_button_base_h*2, (total_d + lever_button_w)/2 + 2*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h - buttons_base_tolerance])
-    rotate([90, 0, -90])
+translate([0, -total_d - 50, 0])
+// translate([lever_button_base_h*2, (total_d + lever_button_w)/2 + 2*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h - buttons_base_tolerance])
+//     rotate([90, 0, -90])
     color("Red") lever_button();
 
 // translate([lever_button_base_h*2 + lever_radius, (total_d)/2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
