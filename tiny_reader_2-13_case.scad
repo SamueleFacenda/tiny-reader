@@ -101,12 +101,13 @@ lever_button_h = 5.0;
 lever_button_w = 4.0;
 lever_button_d = buttons_base_d;
 lever_button_slope_h = 3.0;
-lever_button_movement = 1.75; // How much can the lever move left and right
+lever_button_movement = 2.0; // How much can the lever move left and right
 lever_button_base_margin = 1.0;
-lever_button_base_h = 1.0;
-lever_button_x = 0.5;
+lever_button_base_h = 0.6;
+lever_button_x = 1.0; // How into the wall must the button stay
 lever_w = 2.8; // Width of the board lever button (2.21 real)
 lever_h = 2.0; // Height of the board lever button (in the button cover)
+lever_radius = 7.0;
 lever_vertical_space = 0.4;
 
 // Internal buttons position
@@ -138,7 +139,7 @@ module main_body() {
     if ($preview) {
         translate([31.8 + wall, 15.85 + wall, pcb_h - 1.7])
             rotate([90,0,90])
-                #import("output.stl");
+                import("output.stl");
     }
     difference() {
         // External Block
@@ -266,5 +267,10 @@ translate([0, -total_d - 20, buttons_base_h])
     color("Red") tactile_button();
 translate([0, -total_d - 30, buttons_base_h]) 
     color("Red") tactile_button();
-translate([0, -total_d - 50, 0])
+// translate([0, -total_d - 50, 0])
+translate([lever_button_base_h*2, (total_d + lever_button_w)/2 + 2*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h - buttons_base_tolerance])
+    rotate([90, 0, -90])
     color("Red") lever_button();
+
+translate([lever_button_base_h*2 + lever_radius, (total_d)/2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+    #cylinder(h=buttons_h, r=lever_radius, center=true);
