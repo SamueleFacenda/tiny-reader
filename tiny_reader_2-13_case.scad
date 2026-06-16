@@ -73,7 +73,7 @@ pcb_l_h = 2.5; // Height of the left side
 
 // --- FRONT BEZEL (SCREEN EDGES) ---
 bezel_l = 4.5;         // Left bezel
-bezel_r = 9.8;         // Right bezel
+bezel_r = 8.8;         // Right bezel
 bezel_tb = 3.0;        // Top/Bottom bezel
 bezel_thickness = 0.8; // Front wall thickness
 
