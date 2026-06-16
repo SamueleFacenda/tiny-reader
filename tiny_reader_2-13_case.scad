@@ -43,12 +43,13 @@ buttons_base_w = 6;
 buttons_base_d = 4;
 buttons_base_h = 0.6;
 buttons_base_tolerance = 0.5;
+buttons_base_diagonal = sqrt(buttons_base_w^2 + buttons_base_d^2);
 
 module tactile_button() {
     union() {
         // 2.0 is wall, don't want to move the declaration
-        cylinder(h=2.0 + buttons_base_tolerance, r=(buttons_base_d-buttons_base_tolerance)/2);
-        translate([0,0,buttons_base_tolerance + 2.0])
+        cylinder(h=2*buttons_base_h + buttons_base_tolerance, r=(buttons_base_d-buttons_base_tolerance)/2);
+        translate([0,0,buttons_base_tolerance + 2*buttons_base_h])
             minkowski() {
                 cube([EPS, 2, EPS], center=true);
                 difference() {
@@ -136,10 +137,10 @@ total_h = pcb_h + bezel_thickness;
 
 // --- MAIN BODY (CASE) ---
 module main_body() {
-    if ($preview) {
+    if (!$preview) {
         translate([31.8 + wall, 15.85 + wall, pcb_h - 1.7])
             rotate([90,0,90])
-                import("output.stl");
+                #import("output.stl");
     }
     difference() {
         // External Block
@@ -161,12 +162,18 @@ module main_body() {
                 cube([wall + ZERO_GAP, buttons_base_w, buttons_base_d]);
                 translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
                     cube([wall, buttons_base_d, buttons_base_w]);
+                translate([2*buttons_base_h, buttons_base_w/2, buttons_base_d/2])
+                    rotate([0, 90, 0])
+                        cylinder(h=wall, r=buttons_base_diagonal/2);
             }
         translate([0, (total_d + buttons_w) / 2 - buttons_from_side - buttons_base_w, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
             union() {
                 cube([wall + ZERO_GAP, buttons_base_w, buttons_base_d]);
                 translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
                     cube([wall, buttons_base_d, buttons_base_w]);
+                translate([2*buttons_base_h, buttons_base_w/2, buttons_base_d/2])
+                    rotate([0, 90, 0])
+                        cylinder(h=wall, r=buttons_base_diagonal/2);
             }
 
         // Lever button slider space
@@ -272,5 +279,5 @@ translate([lever_button_base_h*2, (total_d + lever_button_w)/2 + 2*lever_button_
     rotate([90, 0, -90])
     color("Red") lever_button();
 
-translate([lever_button_base_h*2 + lever_radius, (total_d)/2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
-    #cylinder(h=buttons_h, r=lever_radius, center=true);
+// translate([lever_button_base_h*2 + lever_radius, (total_d)/2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+//     #cylinder(h=buttons_h, r=lever_radius, center=true);
