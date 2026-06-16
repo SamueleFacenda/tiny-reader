@@ -41,8 +41,8 @@ module corners(offset_val = 2.2) {
 
 buttons_base_w = 6;
 buttons_base_d = 4;
-buttons_base_h = 1.0;
-buttons_base_tolerance = 0.2;
+buttons_base_h = 0.6;
+buttons_base_tolerance = 0.5;
 
 module tactile_button() {
     union() {
@@ -105,7 +105,7 @@ lever_button_movement = 1.5; // How much can the lever move left and right
 lever_button_base_margin = 1.0;
 lever_button_base_h = 1.0;
 lever_button_x = 0.5;
-lever_w = 2.5; // Width of the board lever button (2.21 real)
+lever_w = 2.5 + 2*buttons_base_tolerance; // Width of the board lever button (2.21 real)
 lever_h = 2.0; // Height of the board lever button (in the button cover)
 lever_vertical_space = 0.4;
 
@@ -155,17 +155,17 @@ module main_body() {
 
 
         // Side buttons slot
-        translate([wall - buttons_base_h*2 - side_buttons_h, (total_d - buttons_w) / 2 + buttons_from_side, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+        translate([0, (total_d - buttons_w) / 2 + buttons_from_side, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
             union() {
-                cube([buttons_base_h*3, buttons_base_w, buttons_base_d]);
+                cube([wall + ZERO_GAP, buttons_base_w, buttons_base_d]);
                 translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
-                    cube([buttons_base_h*2, buttons_base_d, buttons_base_w]);
+                    cube([wall, buttons_base_d, buttons_base_w]);
             }
-        translate([wall - buttons_base_h*2 - side_buttons_h, (total_d + buttons_w) / 2 - buttons_from_side - buttons_base_w, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+        translate([0, (total_d + buttons_w) / 2 - buttons_from_side - buttons_base_w, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
             union() {
-                cube([buttons_base_h*3, buttons_base_w, buttons_base_d]);
+                cube([wall + ZERO_GAP, buttons_base_w, buttons_base_d]);
                 translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
-                    cube([buttons_base_h*2, buttons_base_d, buttons_base_w]);
+                    cube([wall, buttons_base_d, buttons_base_w]);
             }
 
         // Lever button slider space
@@ -234,6 +234,31 @@ module back_cover() {
         }
 }
 
+module lever_button() {
+    // Add tolerance to actual lever button size
+    // lever_button_w = lever_button_w - buttons_base_tolerance;
+    lever_button_d = lever_button_d - buttons_base_tolerance;
+    difference() {
+        union() {
+            cube([lever_button_w + 4*lever_button_movement, lever_button_d + 2*lever_button_base_margin, lever_button_base_h]);
+            translate([2*lever_button_movement, lever_button_base_margin, 0])
+                cube([lever_button_w, lever_button_d, lever_button_h - lever_button_slope_h]);
+            translate([2*lever_button_movement, lever_button_base_margin, lever_button_h])
+                hull() {
+                    translate([0, 0, -lever_button_slope_h])
+                        cube([EPS, lever_button_d, EPS]);
+                    translate([lever_button_w, 0, -lever_button_slope_h])
+                        cube([EPS, lever_button_d, EPS]);
+                    translate([lever_button_w/2, lever_button_d, -lever_button_slope_h/2])
+                        rotate([90,0,0])
+                            cylinder(h=lever_button_d, r=lever_button_slope_h/2);
+                }
+        }
+        translate([2*lever_button_movement + lever_button_w/2 - lever_w/2, lever_button_base_margin + lever_vertical_space, -ZERO_GAP])
+            cube([lever_w, lever_button_d - 2*lever_vertical_space, lever_h]);
+    }
+}
+
 // --- RENDER ---
 color("RoyalBlue") main_body();
 
@@ -246,26 +271,5 @@ translate([0, -total_d - 20, buttons_base_h])
     color("Red") tactile_button();
 translate([0, -total_d - 30, buttons_base_h]) 
     color("Red") tactile_button();
-
-translate([0, -total_d - 50, 0]) // lever button
-    color("Red") {
-        difference() {
-            union() {
-                cube([lever_button_w + 4*lever_button_movement, lever_button_d + 2*lever_button_base_margin, lever_button_base_h]);
-                translate([2*lever_button_movement, lever_button_base_margin, 0])
-                    cube([lever_button_w, lever_button_d, lever_button_h - lever_button_slope_h]);
-                translate([2*lever_button_movement, lever_button_base_margin, lever_button_h])
-                    hull() {
-                        translate([0, 0, -lever_button_slope_h])
-                            cube([EPS, lever_button_d, EPS]);
-                        translate([lever_button_w, 0, -lever_button_slope_h])
-                            cube([EPS, lever_button_d, EPS]);
-                        translate([lever_button_w/2, lever_button_d, -lever_button_slope_h/2])
-                            rotate([90,0,0])
-                                cylinder(h=lever_button_d, r=lever_button_slope_h/2);
-                    }
-            }
-            translate([2*lever_button_movement + lever_button_w/2 - lever_w/2, lever_button_base_margin + lever_vertical_space, -ZERO_GAP])
-                cube([lever_w, lever_button_d - 2*lever_vertical_space, lever_h]);
-        }
-    }
+translate([0, -total_d - 50, 0])
+    color("Red") lever_button();
