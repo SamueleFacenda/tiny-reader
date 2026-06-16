@@ -97,15 +97,15 @@ opening_w = 10.0;
 opening_r = 2.0;
 
 // Lever button
-lever_button_h = 4.5;
-lever_button_w = 5.0;
+lever_button_h = 5.0;
+lever_button_w = 4.0;
 lever_button_d = buttons_base_d;
-lever_button_slope_h = 2.5;
-lever_button_movement = 1.5; // How much can the lever move left and right
+lever_button_slope_h = 3.0;
+lever_button_movement = 1.75; // How much can the lever move left and right
 lever_button_base_margin = 1.0;
 lever_button_base_h = 1.0;
 lever_button_x = 0.5;
-lever_w = 2.5 + 2*buttons_base_tolerance; // Width of the board lever button (2.21 real)
+lever_w = 2.8; // Width of the board lever button (2.21 real)
 lever_h = 2.0; // Height of the board lever button (in the button cover)
 lever_vertical_space = 0.4;
 
@@ -238,6 +238,7 @@ module lever_button() {
     // Add tolerance to actual lever button size
     // lever_button_w = lever_button_w - buttons_base_tolerance;
     lever_button_d = lever_button_d - buttons_base_tolerance;
+    lever_button_base_margin = lever_button_base_margin - buttons_base_tolerance/2;
     difference() {
         union() {
             cube([lever_button_w + 4*lever_button_movement, lever_button_d + 2*lever_button_base_margin, lever_button_base_h]);
