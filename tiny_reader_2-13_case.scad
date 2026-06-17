@@ -51,7 +51,7 @@ module tactile_button() {
         cylinder(h=2*buttons_base_h + buttons_base_tolerance, r=(buttons_base_d-buttons_base_tolerance)/2);
         translate([0,0,buttons_base_tolerance + 2*buttons_base_h])
             minkowski() {
-                cube([EPS, 2, EPS], center=true);
+                cube([EPS, 3, EPS], center=true);
                 difference() {
                     sphere(r=buttons_base_w/2);
                     translate([0,0,-buttons_base_w/2])
@@ -137,7 +137,7 @@ total_h = pcb_h + bezel_thickness;
 
 // --- MAIN BODY (CASE) ---
 module main_body() {
-    if (!$preview) {
+    if ($preview) {
         translate([31.8 + wall, 15.85 + wall, pcb_h - 1.7])
             rotate([90,0,90])
                 #import("output.stl");
