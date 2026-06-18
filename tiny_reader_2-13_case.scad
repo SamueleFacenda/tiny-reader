@@ -162,24 +162,30 @@ module main_body() {
                 cube([wall + ZERO_GAP, buttons_base_w, buttons_base_d]);
                 translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
                     cube([wall, buttons_base_d, buttons_base_w]);
-                translate([2*buttons_base_h, buttons_base_w/2, buttons_base_d/2])
-                    rotate([0, 90, 0])
-                        cylinder(h=wall, r=buttons_base_diagonal/2);
-            }
+                translate([2*buttons_base_h, (buttons_base_w - buttons_base_diagonal)/2, (buttons_base_d - buttons_base_diagonal)/2])
+                    difference() {
+                        cube([wall, buttons_base_diagonal, buttons_base_diagonal]);
+                        cube([wall, (buttons_base_diagonal - buttons_base_d)/2, (buttons_base_diagonal - buttons_base_d)/2]);
+                    }
+                }
         translate([0, (total_d + buttons_w) / 2 - buttons_from_side - buttons_base_w, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
             union() {
                 cube([wall + ZERO_GAP, buttons_base_w, buttons_base_d]);
                 translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
                     cube([wall, buttons_base_d, buttons_base_w]);
-                translate([2*buttons_base_h, buttons_base_w/2, buttons_base_d/2])
-                    rotate([0, 90, 0])
-                        cylinder(h=wall, r=buttons_base_diagonal/2);
+                translate([2*buttons_base_h, (buttons_base_w - buttons_base_diagonal)/2, (buttons_base_d - buttons_base_diagonal)/2])
+                    difference() {
+                        cube([wall, buttons_base_diagonal, buttons_base_diagonal]);
+                        translate([0, buttons_base_diagonal/2 + buttons_base_d/2, 0])
+                        cube([wall, (buttons_base_diagonal - buttons_base_d)/2, (buttons_base_diagonal - buttons_base_d)/2]);
+                    }
             }
 
         // Lever button slider space
         translate([0, (total_d - lever_button_w) / 2 - lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
             cube([lever_button_x, lever_button_w + 2*lever_button_movement, lever_button_d]);
         translate([lever_button_x - ZERO_GAP, (total_d - lever_button_w) / 2 - 3*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            // Non planar surface for easier button sliding
             hull() {
                 cube([EPS, lever_button_w + 6*lever_button_movement, EPS]);
                 translate([0, 0, lever_button_d])
