@@ -105,7 +105,7 @@ lever_button_slope_h = 3.5;
 lever_button_movement = 2.3; // How much can the lever move left and right
 lever_button_base_margin = 1.0;
 lever_button_base_h = 0.6;
-lever_button_x = 1.0; // How into the wall must the button stay
+lever_button_x = 0.6; // How into the wall must the button stay
 lever_w = 2.8; // Width of the board lever button (2.21 real)
 lever_h = 2.0; // Height of the board lever button (in the button cover)
 lever_radius = 7.0;
@@ -179,8 +179,18 @@ module main_body() {
         // Lever button slider space
         translate([0, (total_d - lever_button_w) / 2 - lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
             cube([lever_button_x, lever_button_w + 2*lever_button_movement, lever_button_d]);
-        translate([lever_button_x - ZERO_GAP, (total_d - lever_button_w) / 2 - 3*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h - lever_button_base_margin])
-            cube([wall, lever_button_w + 6*lever_button_movement, lever_button_d + 2*lever_button_base_margin]);
+        translate([lever_button_x - ZERO_GAP, (total_d - lever_button_w) / 2 - 3*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            hull() {
+                cube([EPS, lever_button_w + 6*lever_button_movement, EPS]);
+                translate([0, 0, lever_button_d])
+                    cube([EPS, lever_button_w + 6*lever_button_movement, EPS]);
+                translate([lever_button_base_margin/2 + 2*ZERO_GAP, 0, -lever_button_base_margin])
+                    cube([EPS, lever_button_w + 6*lever_button_movement, EPS]);
+                translate([lever_button_base_margin/2 + 2*ZERO_GAP, 0, lever_button_d + lever_button_base_margin])
+                    cube([EPS, lever_button_w + 6*lever_button_movement, EPS]);
+            }
+        translate([lever_button_x + lever_button_base_margin/2, (total_d - lever_button_w) / 2 - 3*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h - lever_button_base_margin]) 
+            cube([wall - lever_button_x + 2*ZERO_GAP, lever_button_w + 6*lever_button_movement, lever_button_d + 2*lever_button_base_margin]);
     
         // USB-C Cutout
         translate([wall + usb_x_pos - usb_w/2, total_d -wall, total_h - bezel_thickness - usb_from_top + usb_h/2])
