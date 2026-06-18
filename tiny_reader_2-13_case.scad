@@ -101,7 +101,6 @@ opening_r = 2.0;
 lever_button_h = 5.0;
 lever_button_w = 3.4;
 lever_button_d = buttons_base_d;
-lever_button_slope_h = 3.5;
 lever_button_movement = 2.3; // How much can the lever move left and right
 lever_button_base_margin = 1.0;
 lever_button_base_h = 0.6;
@@ -110,6 +109,7 @@ lever_w = 2.8; // Width of the board lever button (2.21 real)
 lever_h = 2.0; // Height of the board lever button (in the button cover)
 lever_radius = 7.0;
 lever_vertical_space = 0.4;
+lever_button_rounding_ratio = 0.2; // radius of the top cylinder compared to the slope height
 
 // Internal buttons position
 internal_buttons_r = 1.2;
@@ -257,20 +257,20 @@ module lever_button() {
     // lever_button_w = lever_button_w - buttons_base_tolerance;
     lever_button_d = lever_button_d - buttons_base_tolerance;
     lever_button_base_margin = lever_button_base_margin - buttons_base_tolerance/2;
+    lever_button_slope_h = lever_button_h - lever_button_base_h - lever_button_x;
     difference() {
         union() {
             cube([lever_button_w + 4*lever_button_movement, lever_button_d + 2*lever_button_base_margin, lever_button_base_h]);
             translate([2*lever_button_movement, lever_button_base_margin, 0])
-                cube([lever_button_w, lever_button_d, lever_button_h - lever_button_slope_h]);
-            translate([2*lever_button_movement, lever_button_base_margin, lever_button_h])
+                cube([lever_button_w, lever_button_d, lever_button_base_h + lever_button_x]);
+            translate([2*lever_button_movement, lever_button_base_margin, lever_button_base_h + lever_button_x])
                 hull() {
-                    translate([0, 0, -lever_button_slope_h])
+                    cube([EPS, lever_button_d, EPS]);
+                    translate([lever_button_w, 0, 0])
                         cube([EPS, lever_button_d, EPS]);
-                    translate([lever_button_w, 0, -lever_button_slope_h])
-                        cube([EPS, lever_button_d, EPS]);
-                    translate([lever_button_w/2, lever_button_d, -lever_button_slope_h/2])
+                    translate([lever_button_w/2, lever_button_d,lever_button_slope_h * (1 - lever_button_rounding_ratio)])
                         rotate([90,0,0])
-                            cylinder(h=lever_button_d, r=lever_button_slope_h/4);
+                            cylinder(h=lever_button_d, r=lever_button_slope_h * lever_button_rounding_ratio);
                 }
         }
         translate([2*lever_button_movement + lever_button_w/2 - lever_w/2, lever_button_base_margin + lever_vertical_space, -ZERO_GAP])
@@ -294,6 +294,3 @@ translate([0, -total_d - 50, 0])
 // translate([lever_button_base_h*2, (total_d + lever_button_w)/2 + 2*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h - buttons_base_tolerance])
 //     rotate([90, 0, -90])
     color("Red") lever_button();
-
-// translate([lever_button_base_h*2 + lever_radius, (total_d)/2, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
-//     #cylinder(h=buttons_h, r=lever_radius, center=true);
