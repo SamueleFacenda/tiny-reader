@@ -39,8 +39,32 @@ module corners(offset_val = 2.2) {
     translate([inset, total_d - inset, 0]) children();
 }
 
+buttons_base_w = 6;
+buttons_base_d = 4;
+buttons_base_h = 0.6;
+buttons_base_tolerance = 0.5;
+buttons_base_diagonal = sqrt(buttons_base_w^2 + buttons_base_d^2);
+
+module tactile_button() {
+    union() {
+        // 2.0 is wall, don't want to move the declaration
+        cylinder(h=2*buttons_base_h + buttons_base_tolerance, r=(buttons_base_d-buttons_base_tolerance)/2);
+        translate([0,0,buttons_base_tolerance + 2*buttons_base_h])
+            minkowski() {
+                cube([EPS, 3, EPS], center=true);
+                difference() {
+                    sphere(r=buttons_base_w/2);
+                    translate([0,0,-buttons_base_w/2])
+                        cube([buttons_base_w, buttons_base_w, buttons_base_w], center=true); 
+                }
+            }
+        translate([-(buttons_base_w - buttons_base_tolerance)/2,-(buttons_base_d - buttons_base_tolerance)/2,-buttons_base_h])
+            cube([buttons_base_w - buttons_base_tolerance, buttons_base_d - buttons_base_tolerance, buttons_base_h]);
+    }
+}
+
 // --- BOARD SPECIFICATIONS ---
-pcb_w = 63.0;         // PCB Width
+pcb_w = 62.8;         // PCB Width
 pcb_d = 31.0;         // PCB Depth
 // pcb_h = 10.7; // real height
 // pcb_h = 10.7 + 6.0;    // battery plus full pcb
@@ -50,8 +74,8 @@ pcb_l_h = 2.5; // Height of the left side
 
 // --- FRONT BEZEL (SCREEN EDGES) ---
 bezel_l = 4.5;         // Left bezel
-bezel_r = 9.8;         // Right bezel
-bezel_tb = 3.3;        // Top/Bottom bezel
+bezel_r = 8.8;         // Right bezel
+bezel_tb = 3.0;        // Top/Bottom bezel
 bezel_thickness = 0.8; // Front wall thickness
 
 // --- USB-C POSITION ---
@@ -66,10 +90,26 @@ usb_corner_r = 1.5;
 buttons_w = 31.0; // width with some margin
 buttons_from_bezel = 3.0; // distance from the top (without bezel) to buttons top
 buttons_h = 4.0; // height of the buttons area
+buttons_from_side = 1.4; // from the aperture side to the side buttons
+side_buttons_h = 0.6; // height of the side buttons
 
 // Opening hole on the base
 opening_w = 10.0;
 opening_r = 2.0;
+
+// Lever button
+lever_button_h = 5.0;
+lever_button_w = 3.4;
+lever_button_d = buttons_base_d;
+lever_button_movement = 2.3; // How much can the lever move left and right
+lever_button_base_margin = 1.0;
+lever_button_base_h = 0.6;
+lever_button_x = 0.6; // How into the wall must the button stay
+lever_w = 2.8; // Width of the board lever button (2.21 real)
+lever_h = 2.0; // Height of the board lever button (in the button cover)
+lever_radius = 7.0;
+lever_vertical_space = 0.4;
+lever_button_rounding_ratio = 0.2; // radius of the top cylinder compared to the slope height
 
 // Internal buttons position
 internal_buttons_r = 1.2;
@@ -98,7 +138,7 @@ total_h = pcb_h + bezel_thickness;
 // --- MAIN BODY (CASE) ---
 module main_body() {
     if ($preview) {
-        translate([31.6 + wall, 15.6 + wall, pcb_h - 1.7])
+        translate([31.8 + wall, 15.85 + wall, pcb_h - 1.7])
             rotate([90,0,90])
                 #import("output.stl");
     }
@@ -115,11 +155,49 @@ module main_body() {
         translate([wall + bezel_l, wall + bezel_tb, total_h - bezel_thickness])
             rounded_trapezoid([pcb_w - (bezel_l + bezel_r), pcb_d - 2*bezel_tb], bezel_thickness, bezel_thickness);
 
-        // Buttons Cutout (on the left side, centered vertically)
-        translate([wall, (total_d - buttons_w) / 2, total_h - bezel_thickness - buttons_from_bezel])
-            rotate([-90, 0, 90])
-                rounded_trapezoid([buttons_w, buttons_h], wall, buttons_h/2 - EPS, off= wall * 1.5);
 
+        // Side buttons slot
+        translate([0, (total_d - buttons_w) / 2 + buttons_from_side, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            union() {
+                cube([wall + ZERO_GAP, buttons_base_w, buttons_base_d]);
+                translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
+                    cube([wall, buttons_base_d, buttons_base_w]);
+                translate([2*buttons_base_h, (buttons_base_w - buttons_base_diagonal)/2, (buttons_base_d - buttons_base_diagonal)/2])
+                    difference() {
+                        cube([wall, buttons_base_diagonal, buttons_base_diagonal]);
+                        cube([wall, (buttons_base_diagonal - buttons_base_d)/2, (buttons_base_diagonal - buttons_base_d)/2]);
+                    }
+                }
+        translate([0, (total_d + buttons_w) / 2 - buttons_from_side - buttons_base_w, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            union() {
+                cube([wall + ZERO_GAP, buttons_base_w, buttons_base_d]);
+                translate([buttons_base_h, (buttons_base_w - buttons_base_d)/2, (buttons_base_d - buttons_base_w)/2])
+                    cube([wall, buttons_base_d, buttons_base_w]);
+                translate([2*buttons_base_h, (buttons_base_w - buttons_base_diagonal)/2, (buttons_base_d - buttons_base_diagonal)/2])
+                    difference() {
+                        cube([wall, buttons_base_diagonal, buttons_base_diagonal]);
+                        translate([0, buttons_base_diagonal/2 + buttons_base_d/2, 0])
+                        cube([wall, (buttons_base_diagonal - buttons_base_d)/2, (buttons_base_diagonal - buttons_base_d)/2]);
+                    }
+            }
+
+        // Lever button slider space
+        translate([0, (total_d - lever_button_w) / 2 - lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            cube([lever_button_x, lever_button_w + 2*lever_button_movement, lever_button_d]);
+        translate([lever_button_x - ZERO_GAP, (total_d - lever_button_w) / 2 - 3*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h])
+            // Non planar surface for easier button sliding
+            hull() {
+                cube([EPS, lever_button_w + 6*lever_button_movement, EPS]);
+                translate([0, 0, lever_button_d])
+                    cube([EPS, lever_button_w + 6*lever_button_movement, EPS]);
+                translate([lever_button_base_margin/2 + 2*ZERO_GAP, 0, -lever_button_base_margin])
+                    cube([EPS, lever_button_w + 6*lever_button_movement, EPS]);
+                translate([lever_button_base_margin/2 + 2*ZERO_GAP, 0, lever_button_d + lever_button_base_margin])
+                    cube([EPS, lever_button_w + 6*lever_button_movement, EPS]);
+            }
+        translate([lever_button_x + lever_button_base_margin/2, (total_d - lever_button_w) / 2 - 3*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h - lever_button_base_margin]) 
+            cube([wall - lever_button_x + 2*ZERO_GAP, lever_button_w + 6*lever_button_movement, lever_button_d + 2*lever_button_base_margin]);
+    
         // USB-C Cutout
         translate([wall + usb_x_pos - usb_w/2, total_d -wall, total_h - bezel_thickness - usb_from_top + usb_h/2])
             rotate([-90, 0, 0])
@@ -174,9 +252,45 @@ module back_cover() {
         }
 }
 
+module lever_button() {
+    // Add tolerance to actual lever button size
+    // lever_button_w = lever_button_w - buttons_base_tolerance;
+    lever_button_d = lever_button_d - buttons_base_tolerance;
+    lever_button_base_margin = lever_button_base_margin - buttons_base_tolerance/2;
+    lever_button_slope_h = lever_button_h - lever_button_base_h - lever_button_x;
+    difference() {
+        union() {
+            cube([lever_button_w + 4*lever_button_movement, lever_button_d + 2*lever_button_base_margin, lever_button_base_h]);
+            translate([2*lever_button_movement, lever_button_base_margin, 0])
+                cube([lever_button_w, lever_button_d, lever_button_base_h + lever_button_x]);
+            translate([2*lever_button_movement, lever_button_base_margin, lever_button_base_h + lever_button_x])
+                hull() {
+                    cube([EPS, lever_button_d, EPS]);
+                    translate([lever_button_w, 0, 0])
+                        cube([EPS, lever_button_d, EPS]);
+                    translate([lever_button_w/2, lever_button_d,lever_button_slope_h * (1 - lever_button_rounding_ratio)])
+                        rotate([90,0,0])
+                            cylinder(h=lever_button_d, r=lever_button_slope_h * lever_button_rounding_ratio);
+                }
+        }
+        translate([2*lever_button_movement + lever_button_w/2 - lever_w/2, lever_button_base_margin + lever_vertical_space, -ZERO_GAP])
+            cube([lever_w, lever_button_d - 2*lever_vertical_space, lever_h]);
+    }
+}
+
 // --- RENDER ---
 color("RoyalBlue") main_body();
 
 // translate([0, 0, -corner_r]) // fit check
 translate([0, -total_d - 10, 0]) 
     color("DimGray") back_cover();
+
+
+translate([0, -total_d - 20, buttons_base_h]) 
+    color("Red") tactile_button();
+translate([0, -total_d - 30, buttons_base_h]) 
+    color("Red") tactile_button();
+translate([0, -total_d - 50, 0])
+// translate([lever_button_base_h*2, (total_d + lever_button_w)/2 + 2*lever_button_movement, total_h - bezel_thickness - buttons_from_bezel - buttons_h - buttons_base_tolerance])
+//     rotate([90, 0, -90])
+    color("Red") lever_button();

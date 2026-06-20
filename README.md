@@ -14,7 +14,7 @@
 <!-- PROJECT LOGO -->
 <div align="center">
     <a href="https://github.com/SamueleFacenda/tiny-reader">
-        <img src="media/handheld.jpg" alt="Logo" width="256" height="172">
+        <img src="media/face.jpg" alt="Logo" width="256" height="172">
     </a>
     <h3 align="center">TinyReader</h3>
     <p align="center">
@@ -71,7 +71,7 @@
 
 <div style="width:40%; margin: auto;">
 
-![e reader ui](media/ui.jpg)
+![e reader size in hand](media/handheld.jpg)
 </div>
 
 TinyReader is a small and easy to assembly e-book reader. It is intended for mobile reading, it's 
@@ -254,6 +254,9 @@ Use GitHub issues for bugs, feature requests, and build questions.
 
 <!-- GALLERY -->
 ## Gallery
+
+### TinyReader UI
+![e reader ui](media/ui.jpg)
 
 ### TinyReader buttons interface
 ![buttons view](media/buttons.jpg)
