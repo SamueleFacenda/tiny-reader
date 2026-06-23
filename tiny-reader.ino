@@ -443,7 +443,7 @@ static void maybeDeepSleep() {
     storageSaveProgress(reader.path, reader.pagePos);
   }
   display.hibernate();
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)Config::PIN_BTN_OK, 0);
   delay(50);
   esp_deep_sleep_start();
 }
