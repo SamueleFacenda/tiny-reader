@@ -99,10 +99,6 @@ std::vector<BookInfo> storageListBooks() {
   return books;
 }
 
-bool storageBookExists(const String& path) {
-  return LittleFS.exists(path);
-}
-
 String storageNormalizeBookPath(const String& path) {
   if (path.startsWith(Config::BOOKS_DIR)) {
     return path;
@@ -193,7 +189,7 @@ ReadingPosition storageLoadPosition(const String& path, uint32_t bookSize) {
   return position;
 }
 
-bool storageSavePosition(const String& path, const ReadingPosition& position) {
+bool storageSavePosition(const String& path, uint32_t pos, const std::vector<uint32_t>& history) {
   String finalPath = makeProgressPath(path);
   String tempPath = finalPath + ".tmp";
 
@@ -202,15 +198,15 @@ bool storageSavePosition(const String& path, const ReadingPosition& position) {
     return false;
   }
 
-  size_t total = position.history.size();
-  size_t count = (total > Config::READER_HISTORY_MAX) ? Config::READER_HISTORY_MAX : total;
+  const size_t total = history.size();
+  const size_t count = (total > Config::READER_HISTORY_MAX) ? Config::READER_HISTORY_MAX : total;
   file.print(kRecordPrefix);
-  file.print(position.pos);
+  file.print(pos);
   file.print(' ');
   file.print(count);
   for (size_t i = total - count; i < total; ++i) {
     file.print(' ');
-    file.print(position.history[i]);
+    file.print(history[i]);
   }
   file.print('\n');
   bool written = (file.getWriteError() == 0);

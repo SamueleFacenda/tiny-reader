@@ -40,7 +40,7 @@ static ButtonManager buttons;
 static ScreenId screen = ScreenId::MenuLibrary;
 static unsigned long lastActivity = 0;
 static unsigned long lastWifiRefresh = 0;
-static uint16_t wifiPartialCount = 0;
+static uint16_t wifiPartialsSinceFull = 0;
 static uint8_t partialsSinceFull = 0;
 static std::vector<BookInfo> libraryBooks;
 static int libraryIndex = 0;
@@ -101,10 +101,11 @@ static const char* screenName(ScreenId id) {
 
 static void logState(const char* tag) {
   Serial.printf(
-    "%s screen=%s reader=%s books=%u idx=%d scroll=%d portal=%s uptime=%lu heap=%u min=%u maxalloc=%u\n",
+    "%s screen=%s reader=%s pos=%u books=%u idx=%d scroll=%d portal=%s uptime=%lu heap=%u min=%u maxalloc=%u\n",
     tag,
     screenName(screen),
     reader.file ? "open" : "closed",
+    static_cast<unsigned>(reader.pagePos),
     static_cast<unsigned>(libraryBooks.size()),
     libraryIndex,
     libraryScroll,
@@ -114,15 +115,6 @@ static void logState(const char* tag) {
     static_cast<unsigned>(ESP.getMinFreeHeap()),
     static_cast<unsigned>(ESP.getMaxAllocHeap())
   );
-}
-
-static String titleFromPath(const String& path) {
-  int slash = path.lastIndexOf('/');
-  String name = (slash >= 0) ? path.substring(slash + 1) : path;
-  if (name.length() == 0) {
-    return "Book";
-  }
-  return name;
 }
 
 // Reads one page worth of raw bytes at pos into pageBuffer, returning the count.
@@ -143,51 +135,36 @@ static uint32_t pageEndAt(uint32_t pos) {
   return (end > reader.size) ? reader.size : end;
 }
 
-static void refreshLibrary() {
-  libraryBooks = storageListBooks();
+// Keeps the selection inside the library and the scroll window around it.
+static void clampLibrarySelection() {
   if (libraryBooks.empty()) {
     libraryIndex = 0;
     libraryScroll = 0;
     return;
   }
 
-  String currentBook = storageGetCurrentBook();
-  if (currentBook.length() > 0) {
-    for (size_t i = 0; i < libraryBooks.size(); ++i) {
-      if (libraryBooks[i].path == currentBook) {
-        libraryIndex = static_cast<int>(i);
-        break;
-      }
-    }
-  }
+  const int lastIndex = static_cast<int>(libraryBooks.size()) - 1;
+  libraryIndex = constrain(libraryIndex, 0, lastIndex);
 
-  if (libraryIndex >= static_cast<int>(libraryBooks.size())) {
-    libraryIndex = static_cast<int>(libraryBooks.size()) - 1;
-  }
-  if (libraryIndex < 0) {
-    libraryIndex = 0;
-  }
-  int maxVisible = uiLayout().maxLines;
+  const int visible = uiLayout().maxLines;
   if (libraryIndex < libraryScroll) {
     libraryScroll = libraryIndex;
-  }
-  if (libraryIndex >= libraryScroll + maxVisible) {
-    libraryScroll = libraryIndex - maxVisible + 1;
+  } else if (libraryIndex >= libraryScroll + visible) {
+    libraryScroll = libraryIndex - visible + 1;
   }
 }
 
-static uint8_t menuIndexForScreen(ScreenId target) {
-  switch (target) {
-    case ScreenId::MenuLibrary:
-      return 0;
-    case ScreenId::MenuWifi:
-    case ScreenId::WifiSettings:
-      return 1;
-    case ScreenId::MenuInfo:
-      return 2;
-    default:
-      return 0;
+static void refreshLibrary() {
+  libraryBooks = storageListBooks();
+
+  const String currentBook = storageGetCurrentBook();
+  for (size_t i = 0; i < libraryBooks.size() && currentBook.length() > 0; ++i) {
+    if (libraryBooks[i].path == currentBook) {
+      libraryIndex = static_cast<int>(i);
+      break;
+    }
   }
+  clampLibrarySelection();
 }
 
 static ScreenId previousMenu(ScreenId target) {
@@ -249,10 +226,7 @@ static void openBook(const String& path, bool resetPos) {
 }
 
 static void saveReaderPosition() {
-  ReadingPosition position;
-  position.pos = reader.pagePos;
-  position.history = reader.history;
-  storageSavePosition(reader.path, position);
+  storageSavePosition(reader.path, reader.pagePos, reader.history);
 }
 
 static void renderCurrentPage(bool allowPartial) {
@@ -263,7 +237,6 @@ static void renderCurrentPage(bool allowPartial) {
   saveReaderPosition();
 
   ReaderView view;
-  view.title = titleFromPath(reader.path);
   view.text = pageBuffer;
   view.textLen = available;
   view.bytesConsumed = 0;
@@ -372,74 +345,43 @@ static int batteryPercentFromVoltage(float v) {
 }
 
 static void showScreen(ScreenId target) {
-  Serial.printf("showScreen: %s -> %s\n", screenName(screen), screenName(target));
   if (target == ScreenId::Reader && !reader.file) {
     Serial.println("showScreen: no book open, falling back to MenuLibrary");
     target = ScreenId::MenuLibrary;
   }
+  Serial.printf("showScreen: %s -> %s\n", screenName(screen), screenName(target));
   screen = target;
-  logState("before-draw");
 
   switch (screen) {
     case ScreenId::Reader:
-      Serial.printf("draw Reader at pos=%lu size=%u history=%u\n",
-                    static_cast<unsigned long>(reader.pagePos),
-                    static_cast<unsigned>(reader.size),
-                    static_cast<unsigned>(reader.history.size()));
       renderCurrentPage(false);
       break;
     case ScreenId::MenuLibrary:
       refreshLibrary();
-      Serial.printf("draw MenuLibrary (menu focus) books=%u idx=%d scroll=%d\n",
-                    static_cast<unsigned>(libraryBooks.size()),
-                    libraryIndex,
-                    libraryScroll);
-      // menu-focused: show library pane with no active selection
-      uiDrawLibrary(display, libraryBooks, -1, libraryScroll);
+      uiDrawLibrary(display, libraryBooks, -1, libraryScroll);   // no selection: menu has focus
       break;
     case ScreenId::ChooseBook:
       refreshLibrary();
-      Serial.printf("draw ChooseBook books=%u selected=%d scroll=%d\n",
-                    static_cast<unsigned>(libraryBooks.size()),
-                    libraryIndex,
-                    libraryScroll);
-      if (libraryBooks.empty()) {
-        libraryIndex = 0;
-        libraryScroll = 0;
-      } else if (libraryIndex >= static_cast<int>(libraryBooks.size())) {
-        libraryIndex = static_cast<int>(libraryBooks.size()) - 1;
-      }
       uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
       break;
     case ScreenId::MenuWifi:
-      Serial.println("draw MenuWifi");
       uiDrawWifiOff(display);
       break;
     case ScreenId::MenuInfo: {
-      StorageStats stats = storageGetStats();
-      float v = readBatteryVoltage();
-      int pct = batteryPercentFromVoltage(v);
-      Serial.printf("draw MenuInfo used=%u total=%u batt=%.2f pct=%d\n",
-                    static_cast<unsigned>(stats.usedBytes),
-                    static_cast<unsigned>(stats.totalBytes),
-                    v,
-                    pct);
-      uiDrawInfo(display, stats, v, pct);
+      const float volts = readBatteryVoltage();
+      uiDrawInfo(display, storageGetStats(), volts, batteryPercentFromVoltage(volts));
       break;
     }
     case ScreenId::WifiSettings:
-      wifiPartialCount = 0;
-      Serial.printf("draw WifiSettings active=%s ip=%s\n",
-                    webPortalActive() ? "yes" : "no",
-                    webPortalIp().c_str());
-      uiDrawWifiSettings(display, webPortalActive(), webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS, webPortalUptimeMs(), false);
+      wifiPartialsSinceFull = 0;
+      uiDrawWifiSettings(display, webPortalActive(), webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS,
+                         webPortalUptimeMs(), false);
       break;
     case ScreenId::Error:
-      Serial.println("draw Error");
       break;
   }
 
-  logState("after-draw");
+  logState("drawn");
 }
 
 static void onUploadComplete(const String& path, bool success) {
@@ -453,15 +395,10 @@ static void onUploadComplete(const String& path, bool success) {
   updateActivity();
 }
 
-static void stopWifiPortal() {
-  if (webPortalActive()) {
-    webPortalStop();
-  }
-}
-
-static bool ensureStorageReady() {
+// Blocks on the error screen until the filesystem mounts or the user formats it.
+static void ensureStorageReady() {
   if (storageBegin(false)) {
-    return true;
+    return;
   }
   screen = ScreenId::Error;
   uiDrawError(display, "LittleFS error", "Mount failed", "Hold OK to format");
@@ -484,24 +421,12 @@ static bool ensureStorageReady() {
 
     if (buttons.consumeShortPress(ButtonId::Exit)) {
       if (storageBegin(true)) {
-        return true;
+        return;
       }
       uiDrawError(display, "LittleFS error", "Mount failed", "Press Exit to retry");
     }
     delay(20);
   }
-}
-
-// Steps through the menu cycle without repainting the screens in between.
-static void stepMenu(int steps) {
-  ScreenId target = screen;
-  for (int i = 0; i < steps; ++i) {
-    target = nextMenu(target);
-  }
-  for (int i = 0; i > steps; --i) {
-    target = previousMenu(target);
-  }
-  showScreen(target);
 }
 
 // How long the loop may sleep before it has work to do again.
@@ -598,9 +523,7 @@ void setup() {
     analogReadResolution(12);
   }
 
-  if (!ensureStorageReady()) {
-    return;
-  }
+  ensureStorageReady();
   storageEnsureDirs();
 
   StorageStats stats = storageGetStats();
@@ -622,205 +545,178 @@ void setup() {
   lastActivity = millis();
 }
 
-void loop() {
-  buttons.update();
+// Net movement of a latched direction pair, so a burst of presses costs one
+// repaint instead of one per press.
+static int consumeDirection() {
+  const int forward = buttons.consumePresses(ButtonId::Next);
+  const int backward = buttons.consumePresses(ButtonId::Prev);
+  if (forward != 0 || backward != 0) {
+    Serial.printf("BTN next=%d prev=%d\n", forward, backward);
+  }
+  return forward - backward;
+}
 
-  if (webPortalActive()) {
-    webPortalHandle();
-    if (screen == ScreenId::WifiSettings && millis() - lastWifiRefresh >= 1000) {
-      lastWifiRefresh = millis();
-      bool doFullRefresh = (wifiPartialCount >= Config::WIFI_SETTINGS_FULL_REFRESH_EVERY);
-      uiDrawWifiSettings(display, true, webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS, webPortalUptimeMs(), !doFullRefresh);
-      if (doFullRefresh) {
-        wifiPartialCount = 0;
-      } else {
-        wifiPartialCount++;
-      }
-    }
-    if (webPortalUptimeMs() > Config::SERVER_TIMEOUT_MS) {
-      stopWifiPortal();
-      if (screen == ScreenId::WifiSettings) {
-        showScreen(ScreenId::MenuWifi);
-      }
-    }
+static void serviceWebPortal() {
+  if (!webPortalActive()) {
+    return;
+  }
+  webPortalHandle();
+
+  if (screen == ScreenId::WifiSettings && millis() - lastWifiRefresh >= 1000) {
+    lastWifiRefresh = millis();
+    const bool partial = (wifiPartialsSinceFull < Config::WIFI_SETTINGS_FULL_REFRESH_EVERY);
+    uiDrawWifiSettings(display, true, webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS,
+                       webPortalUptimeMs(), partial);
+    wifiPartialsSinceFull = partial ? (wifiPartialsSinceFull + 1) : 0;
   }
 
-  bool action = false;
-
-  if (buttons.consumeShortPress(ButtonId::Exit)) {
-    Serial.println("BTN Exit");
-    switch (screen) {
-      case ScreenId::Reader:
-        showScreen(ScreenId::MenuLibrary);
-        break;
-      case ScreenId::ChooseBook:
-        showScreen(ScreenId::MenuLibrary);
-        break;
-      case ScreenId::WifiSettings:
-        stopWifiPortal();
-        showScreen(ScreenId::MenuWifi);
-        break;
-      case ScreenId::MenuWifi:
-      case ScreenId::MenuInfo:
-        showScreen(ScreenId::MenuLibrary);
-        break;
-      case ScreenId::MenuLibrary:
-        if (libraryBooks.empty()) {
-          Serial.println("BTN Exit: empty library -> MenuWifi");
-          showScreen(ScreenId::MenuWifi);
-        } else if (reader.file) {
-          showScreen(ScreenId::Reader);
-        } else {
-          Serial.println("BTN Exit: library -> MenuWifi");
-          showScreen(ScreenId::MenuWifi);
-        }
-        break;
-      case ScreenId::Error:
-        break;
-    }
-    action = true;
-  }
-
-  // Next/Prev step the menu cycle identically on every menu screen, and several
-  // presses collapse into a single repaint (these screens refresh fully).
-  if (isMenuScreen(screen)) {
-    uint8_t forward = buttons.consumePresses(ButtonId::Next);
-    if (forward > 0) {
-      Serial.printf("BTN Next x%u\n", static_cast<unsigned>(forward));
-      stepMenu(forward);
-      action = true;
-    }
-    uint8_t backward = buttons.consumePresses(ButtonId::Prev);
-    if (backward > 0) {
-      Serial.printf("BTN Prev x%u\n", static_cast<unsigned>(backward));
-      stepMenu(-static_cast<int>(backward));
-      action = true;
+  if (webPortalUptimeMs() > Config::SERVER_TIMEOUT_MS) {
+    webPortalStop();
+    if (screen == ScreenId::WifiSettings) {
+      showScreen(ScreenId::MenuWifi);
     }
   }
+}
+
+// Exit leaves the current screen: back to the book if one is open, otherwise to
+// somewhere useful.
+static bool handleExit() {
+  if (!buttons.consumeShortPress(ButtonId::Exit)) {
+    return false;
+  }
+  Serial.println("BTN Exit");
 
   switch (screen) {
-    case ScreenId::Reader: {
-      uint8_t forward = buttons.consumePresses(ButtonId::Next);
-      if (forward > 0) {
-        Serial.printf("BTN Next x%u\n", static_cast<unsigned>(forward));
-        advancePages(forward);
-        action = true;
-      }
-      uint8_t backward = buttons.consumePresses(ButtonId::Prev);
-      if (backward > 0) {
-        Serial.printf("BTN Prev x%u\n", static_cast<unsigned>(backward));
-        goBackPages(backward);
-        action = true;
-      }
-      if (buttons.consumeShortPress(ButtonId::Ok)) {
-        Serial.println("BTN Ok");
-        deepClean();
-        action = true;
-      }
-      break;
-    }
-    case ScreenId::MenuLibrary:
-      // Menu-focused: Next/Prev move the active menu, OK enters ChooseBook
-      if (buttons.consumeShortPress(ButtonId::Ok)) {
-        Serial.println("BTN Ok");
-        refreshLibrary();
-        if (!libraryBooks.empty()) {
-          // enter book-choose mode
-          if (libraryIndex >= static_cast<int>(libraryBooks.size())) {
-            libraryIndex = static_cast<int>(libraryBooks.size()) - 1;
-          }
-          showScreen(ScreenId::ChooseBook);
-        } else {
-          // no books -> go to wifi
-          showScreen(ScreenId::MenuWifi);
-        }
-        action = true;
-      }
-      break;
-    case ScreenId::ChooseBook:
-      {
-      uint8_t forward = buttons.consumePresses(ButtonId::Next);
-      if (forward > 0) {
-        Serial.printf("BTN Next x%u\n", static_cast<unsigned>(forward));
-        if (!libraryBooks.empty()) {
-          libraryIndex = min(libraryIndex + forward, static_cast<int>(libraryBooks.size()) - 1);
-          int maxVisible = uiLayout().maxLines;
-          if (libraryIndex >= libraryScroll + maxVisible) {
-            libraryScroll = libraryIndex - maxVisible + 1;
-          }
-          Serial.printf("ChooseBook move next -> idx=%d scroll=%d books=%u\n",
-                        libraryIndex,
-                        libraryScroll,
-                        static_cast<unsigned>(libraryBooks.size()));
-          uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
-        }
-        action = true;
-      }
-      uint8_t backward = buttons.consumePresses(ButtonId::Prev);
-      if (backward > 0) {
-        Serial.printf("BTN Prev x%u\n", static_cast<unsigned>(backward));
-        if (!libraryBooks.empty()) {
-          libraryIndex = max(libraryIndex - backward, 0);
-          if (libraryIndex < libraryScroll) {
-            libraryScroll = libraryIndex;
-          }
-          Serial.printf("ChooseBook move prev -> idx=%d scroll=%d books=%u\n",
-                        libraryIndex,
-                        libraryScroll,
-                        static_cast<unsigned>(libraryBooks.size()));
-          uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
-        }
-        action = true;
-      }
-      }
-      if (buttons.consumeShortPress(ButtonId::Ok)) {
-        Serial.println("BTN Ok");
-        if (!libraryBooks.empty()) {
-          Serial.printf("ChooseBook open book idx=%d path=%s\n", libraryIndex, libraryBooks[libraryIndex].path.c_str());
-          openBook(libraryBooks[libraryIndex].path, false);
-          showScreen(ScreenId::Reader);
-        } else {
-          Serial.println("ChooseBook: no books");
-          showScreen(ScreenId::MenuLibrary);
-        }
-        action = true;
-      }
-      break;
-    case ScreenId::MenuWifi:
-      if (buttons.consumeShortPress(ButtonId::Ok)) {
-        Serial.println("BTN Ok");
-        if (!webPortalActive()) {
-          Serial.println("Starting web portal");
-          webPortalStart(onUploadComplete);
-          lastWifiRefresh = 0;
-        } else {
-          Serial.println("Web portal already active");
-        }
-        showScreen(ScreenId::WifiSettings);
-        action = true;
-      }
-      break;
-    case ScreenId::MenuInfo:
-      if (buttons.consumeShortPress(ButtonId::Ok)) {
-        Serial.println("BTN Ok");
-        Serial.println("Refreshing info screen");
-        showScreen(ScreenId::MenuInfo);
-        action = true;
-      }
-      break;
     case ScreenId::WifiSettings:
-      if (buttons.consumeShortPress(ButtonId::Ok)) {
-        Serial.println("BTN Ok");
-        Serial.println("Refreshing wifi settings screen");
-        showScreen(ScreenId::WifiSettings);
-        action = true;
-      }
+      webPortalStop();
+      showScreen(ScreenId::MenuWifi);
+      break;
+    case ScreenId::MenuLibrary:
+      showScreen(reader.file ? ScreenId::Reader : ScreenId::MenuWifi);
       break;
     case ScreenId::Error:
       break;
+    default:
+      showScreen(ScreenId::MenuLibrary);
+      break;
+  }
+  return true;
+}
+
+// Next and Prev walk the menu cycle on every menu screen alike.
+static bool handleMenuStep() {
+  if (!isMenuScreen(screen)) {
+    return false;
+  }
+  int steps = consumeDirection();
+  if (steps == 0) {
+    return false;
   }
 
-  if (action) {
+  ScreenId target = screen;
+  for (; steps > 0; --steps) {
+    target = nextMenu(target);
+  }
+  for (; steps < 0; ++steps) {
+    target = previousMenu(target);
+  }
+  showScreen(target);
+  return true;
+}
+
+static bool handleReaderInput() {
+  const int pages = consumeDirection();
+  if (pages > 0) {
+    advancePages(pages);
+  } else if (pages < 0) {
+    goBackPages(-pages);
+  }
+
+  bool acted = (pages != 0);
+  if (buttons.consumeShortPress(ButtonId::Ok)) {
+    Serial.println("BTN Ok");
+    deepClean();
+    acted = true;
+  }
+  return acted;
+}
+
+static bool handleChooseBookInput() {
+  bool acted = false;
+
+  const int steps = consumeDirection();
+  if (steps != 0 && !libraryBooks.empty()) {
+    libraryIndex += steps;
+    clampLibrarySelection();
+    uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
+    acted = true;
+  }
+
+  if (buttons.consumeShortPress(ButtonId::Ok)) {
+    Serial.println("BTN Ok");
+    if (libraryBooks.empty()) {
+      showScreen(ScreenId::MenuLibrary);
+    } else {
+      openBook(libraryBooks[libraryIndex].path, false);
+      showScreen(ScreenId::Reader);
+    }
+    acted = true;
+  }
+  return acted;
+}
+
+// Ok means something different on every menu: enter the library, start the
+// portal, or just redraw what is on screen.
+static bool handleMenuOk() {
+  if (!buttons.consumeShortPress(ButtonId::Ok)) {
+    return false;
+  }
+  Serial.println("BTN Ok");
+
+  switch (screen) {
+    case ScreenId::MenuLibrary:
+      showScreen(libraryBooks.empty() ? ScreenId::MenuWifi : ScreenId::ChooseBook);
+      break;
+    case ScreenId::MenuWifi:
+      if (!webPortalActive()) {
+        webPortalStart(onUploadComplete);
+        lastWifiRefresh = 0;
+      }
+      showScreen(ScreenId::WifiSettings);
+      break;
+    default:
+      showScreen(screen);   // MenuInfo and WifiSettings just refresh
+      break;
+  }
+  return true;
+}
+
+static bool handleScreenInput() {
+  switch (screen) {
+    case ScreenId::Reader:
+      return handleReaderInput();
+    case ScreenId::ChooseBook:
+      return handleChooseBookInput();
+    case ScreenId::MenuLibrary:
+    case ScreenId::MenuWifi:
+    case ScreenId::MenuInfo:
+    case ScreenId::WifiSettings:
+      return handleMenuOk();
+    case ScreenId::Error:
+      return false;
+  }
+  return false;
+}
+
+void loop() {
+  buttons.update();
+  serviceWebPortal();
+
+  bool acted = handleExit();
+  acted |= handleMenuStep();
+  acted |= handleScreenInput();
+
+  if (acted) {
     updateActivity();
   }
 

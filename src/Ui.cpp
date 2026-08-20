@@ -12,7 +12,6 @@ static void computeLayout(EpdDisplay& display) {
   layout.height = display.height();
   layout.margin = max<int16_t>(Config::UI_MIN_MARGIN, layout.width / 40);
   layout.sidebarW = max<int16_t>(38, layout.width / 4);
-  layout.headerH = 0;
   layout.footerH = 0;
   layout.contentX = layout.sidebarW + layout.margin;
   layout.contentY = layout.margin;
@@ -28,7 +27,6 @@ static void computeReaderLayout(EpdDisplay& display) {
   readerLayout.width = display.width();
   readerLayout.height = display.height();
   readerLayout.margin = max<int16_t>(2, readerLayout.width / 80);
-  readerLayout.headerH = 0;
   readerLayout.footerH = 2;
   readerLayout.contentX = readerLayout.margin;
   readerLayout.contentY = readerLayout.margin;
@@ -36,8 +34,6 @@ static void computeReaderLayout(EpdDisplay& display) {
   readerLayout.contentH = readerLayout.height - readerLayout.footerH - readerLayout.margin * 2;
   // FreeSerif9pt8b needs more line spacing to avoid overlap
   readerLayout.lineHeight = max<int16_t>(16, static_cast<int16_t>(8 * Config::READER_TEXT_SIZE + 8));
-  int16_t charWidth = max<int16_t>(6, static_cast<int16_t>(6 * Config::READER_TEXT_SIZE));
-  readerLayout.charsPerLine = max<int16_t>(10, readerLayout.contentW / charWidth);
   readerLayout.maxLines = max<int16_t>(1, readerLayout.contentH / readerLayout.lineHeight);
 }
 
@@ -113,10 +109,6 @@ void uiInit(EpdDisplay& display) {
 
 const UiLayout& uiLayout() {
   return layout;
-}
-
-const UiLayout& uiReaderLayout() {
-  return readerLayout;
 }
 
 void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {

@@ -11,7 +11,6 @@ struct UiLayout {
   int16_t height = 0;
   int16_t margin = 0;
   int16_t sidebarW = 0;
-  int16_t headerH = 0;
   int16_t footerH = 0;
   int16_t contentX = 0;
   int16_t contentY = 0;
@@ -23,7 +22,6 @@ struct UiLayout {
 };
 
 struct ReaderView {
-  String title;
   const char* text = nullptr; // raw unwrapped text to render, not owned
   size_t textLen = 0;
   uint8_t progressPercent = 0;
@@ -32,7 +30,6 @@ struct ReaderView {
 
 void uiInit(EpdDisplay& display);
 const UiLayout& uiLayout();
-const UiLayout& uiReaderLayout();
 
 void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial);
 // How many bytes the next page would consume, without drawing anything. Pure CPU:

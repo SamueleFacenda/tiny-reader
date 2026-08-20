@@ -167,7 +167,13 @@ static void handleUpload() {
       LittleFS.remove(uploadPath);
       return;
     }
-    uploadFile.write(upload.buf, upload.currentSize);
+    if (uploadFile.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      Serial.println("Upload aborted: short write");
+      uploadFailed = true;
+      uploadFile.close();
+      LittleFS.remove(uploadPath);
+      return;
+    }
   } else if (upload.status == UPLOAD_FILE_END) {
     if (uploadFile) {
       uploadFile.close();

@@ -27,11 +27,10 @@ struct ReadingPosition {
 bool storageBegin(bool autoFormat);
 bool storageEnsureDirs();
 std::vector<BookInfo> storageListBooks();
-bool storageBookExists(const String& path);
 String storageNormalizeBookPath(const String& path);
 String storageSanitizeFilename(const String& name);
 String storageGetCurrentBook();
 void storageSetCurrentBook(const String& path);
 ReadingPosition storageLoadPosition(const String& path, uint32_t bookSize);
-bool storageSavePosition(const String& path, const ReadingPosition& position);
+bool storageSavePosition(const String& path, uint32_t pos, const std::vector<uint32_t>& history);
 StorageStats storageGetStats();
