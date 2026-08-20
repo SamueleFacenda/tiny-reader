@@ -3,15 +3,15 @@
 static uint8_t pinFor(ButtonId id) {
   switch (id) {
     case ButtonId::Home:
-      return Config::PIN_BTN_OK;
+      return Config::PIN_HOME;
     case ButtonId::Exit:
-      return Config::PIN_BTN_EXIT;
+      return Config::PIN_EXIT;
     case ButtonId::Prev:
-      return Config::PIN_BTN_PREV;
+      return Config::PIN_PREV;
     case ButtonId::Next:
-      return Config::PIN_BTN_NEXT;
+      return Config::PIN_NEXT;
     case ButtonId::Ok:
-      return Config::PIN_BTN_HOME;
+      return Config::PIN_OK;
     default:
       return 0;
   }

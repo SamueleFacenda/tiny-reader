@@ -138,14 +138,20 @@ The scad source is available here or the rendered stl can be downloaded [directl
      ```
 3. Compile the sketch with Arduino CLI
      ```sh
-     arduino-cli compile --fqbn esp32:esp32:esp32
+     arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=huge_app
      ```
 4. Flash the firmware to the board (port may vary)
     ```sh
-    arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3 --verbose 
+    arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=huge_app --verbose 
     ```
 
 The flake provides the Arduino CLI, ESP32 board packages, Python serial support, and OpenSCAD.
+
+The repository ships a [partitions.csv](partitions.csv) that hands the book filesystem about 6MB
+of the board's 8MB flash, where the stock partition schemes stop at 1.5MB and never look past the
+first 4MB. That is why the FQBN pins `FlashSize=8M`. The first flash with this table invalidates
+any filesystem already on the device: the reader shows a LittleFS error on boot, hold the OK
+button for a couple of seconds to format it, then upload the books again.
 
 ### Assembly
 
@@ -169,7 +175,9 @@ capacity)
 [here on pritables](https://www.printables.com/model/1741918-tinyreader-case-elecrow-crowpanel-esp32-213).
 * The OpenSCAD model references a CrowPanel board STL for fit checking and conversion. The board asset can be converted from the vendor archive at [00-2-13_view_asm.rar](https://github.com/Elecrow-RD/CrowPanel-ESP32-2.13-E-paper-HMI-Display-with-122-250/blob/ca6f62e88c83c108be3904d36e00ded4f55bb68f/3D%20file/00-2-13_view_asm.rar).
 * The firware is built with customization in mind, take a look at [the config file](src/Config.h) for
-all the available customization options (other boards might be supported as well).
+all the available customization options (other boards might be supported as well). Setting
+`LEFT_HANDED` there rotates the screen and swaps the button pairs for holding the device the
+other way round.
 
 
 
@@ -177,7 +185,10 @@ all the available customization options (other boards might be supported as well
 ## Usage
 
 1. Flash the sketch to the board.
-2. Store plain text books on the device or upload them through the Wi-Fi page.
+2. Upload plain text books through the Wi-Fi page. The page converts them in the browser:
+UTF-8 becomes latin-1 (accents are kept, typographic quotes and dashes are flattened),
+hyphenated line breaks are rejoined, and paragraphs are unwrapped so the reader can fill
+every line of the small screen.
 3. Use the physical buttons to navigate the library, reading view, and status screens.
 4. Let the device enter deep sleep when idle to preserve battery life.
 5. Wake from the deep sleep using the `home` button.

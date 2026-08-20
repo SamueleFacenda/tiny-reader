@@ -51,6 +51,33 @@ static int libraryIndex = 0;
 static int libraryScroll = 0;
 RTC_DATA_ATTR static uint8_t sleepResumeMode = 0; // 0=unknown, 1=reader, 2=menu
 
+static const char* resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:
+      return "power-on";
+    case ESP_RST_EXT:
+      return "external";
+    case ESP_RST_SW:
+      return "software";
+    case ESP_RST_PANIC:
+      return "panic";
+    case ESP_RST_INT_WDT:
+      return "interrupt-watchdog";
+    case ESP_RST_TASK_WDT:
+      return "task-watchdog";
+    case ESP_RST_WDT:
+      return "other-watchdog";
+    case ESP_RST_DEEPSLEEP:
+      return "deep-sleep";
+    case ESP_RST_BROWNOUT:
+      return "brownout";
+    case ESP_RST_SDIO:
+      return "sdio";
+    default:
+      return "unknown";
+  }
+}
+
 static void updateActivity() {
   lastActivity = millis();
 }
@@ -78,7 +105,7 @@ static const char* screenName(ScreenId id) {
 
 static void logState(const char* tag) {
   Serial.printf(
-    "%s screen=%s reader=%s books=%u idx=%d scroll=%d portal=%s uptime=%lu\n",
+    "%s screen=%s reader=%s books=%u idx=%d scroll=%d portal=%s uptime=%lu heap=%u min=%u maxalloc=%u\n",
     tag,
     screenName(screen),
     reader.file ? "open" : "closed",
@@ -86,7 +113,10 @@ static void logState(const char* tag) {
     libraryIndex,
     libraryScroll,
     webPortalActive() ? "on" : "off",
-    static_cast<unsigned long>(webPortalUptimeMs())
+    static_cast<unsigned long>(webPortalUptimeMs()),
+    static_cast<unsigned>(ESP.getFreeHeap()),
+    static_cast<unsigned>(ESP.getMinFreeHeap()),
+    static_cast<unsigned>(ESP.getMaxAllocHeap())
   );
 }
 
@@ -213,17 +243,24 @@ static void openBook(const String& path, bool resetPos) {
   }
 
   reader.size = reader.file.size();
-  uint32_t pos = resetPos ? 0 : storageLoadProgress(reader.path);
-  if (pos >= reader.size) {
-    pos = 0;
+  ReadingPosition saved;
+  if (!resetPos) {
+    saved = storageLoadPosition(reader.path, reader.size);
   }
-  reader.pagePos = pos;
-  reader.nextPagePos = pos;
+  reader.pagePos = saved.pos;
+  reader.nextPagePos = saved.pos;
   reader.file.seek(reader.pagePos);
-  reader.history.clear();
+  reader.history = saved.history;
   storageSetCurrentBook(reader.path);
   partialCount = 0;
   Serial.printf("Opened book: %s (%u bytes)\n", reader.path.c_str(), static_cast<unsigned>(reader.size));
+}
+
+static void saveReaderPosition() {
+  ReadingPosition position;
+  position.pos = reader.pagePos;
+  position.history = reader.history;
+  storageSavePosition(reader.path, position);
 }
 
 static void renderCurrentPage(bool allowPartial) {
@@ -233,7 +270,7 @@ static void renderCurrentPage(bool allowPartial) {
   const UiLayout& layout = uiReaderLayout();
   reader.file.seek(reader.pagePos);
   PageData page = readPage(reader.file);
-  storageSaveProgress(reader.path, reader.pagePos);
+  saveReaderPosition();
 
   ReaderView view;
   view.title = titleFromPath(reader.path);
@@ -260,10 +297,12 @@ static void renderCurrentPage(bool allowPartial) {
   } else {
     partialCount = 0;
   }
-  Serial.printf("Rendered page at %u next=%u consumed=%u\n",
+  Serial.printf("Rendered page at %u next=%u consumed=%u heap=%u maxalloc=%u\n",
                 static_cast<unsigned>(reader.pagePos),
                 static_cast<unsigned>(reader.nextPagePos),
-                static_cast<unsigned>(view.bytesConsumed));
+                static_cast<unsigned>(view.bytesConsumed),
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getMaxAllocHeap()));
 }
 
 static void renderNextPage() {
@@ -271,7 +310,7 @@ static void renderNextPage() {
     return;
   }
   reader.history.push_back(reader.pagePos);
-  if (reader.history.size() > 50) {
+  if (reader.history.size() > Config::READER_HISTORY_MAX) {
     reader.history.erase(reader.history.begin());
   }
   reader.pagePos = reader.nextPagePos;
@@ -440,10 +479,10 @@ static void maybeDeepSleep() {
   Serial.println("Entering deep sleep");
   sleepResumeMode = (screen == ScreenId::Reader) ? 1 : 2;
   if (screen == ScreenId::Reader && reader.file) {
-    storageSaveProgress(reader.path, reader.pagePos);
+    saveReaderPosition();
   }
   display.hibernate();
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)Config::PIN_BTN_OK, 0);
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)Config::PIN_WAKE, 0);
   delay(50);
   esp_deep_sleep_start();
 }
@@ -455,7 +494,7 @@ void setup() {
   while (!Serial && millis() - serialWaitStart < 1200) {
     delay(10);
   }
-  Serial.println("TinyReader boot");
+  Serial.printf("TinyReader boot, last reset: %s\n", resetReasonName(esp_reset_reason()));
 
   pinMode(Config::PIN_EPD_POWER, OUTPUT);
   digitalWrite(Config::PIN_EPD_POWER, HIGH);
@@ -472,6 +511,11 @@ void setup() {
     return;
   }
   storageEnsureDirs();
+
+  StorageStats stats = storageGetStats();
+  Serial.printf("Filesystem: %u of %u bytes used\n",
+                static_cast<unsigned>(stats.usedBytes),
+                static_cast<unsigned>(stats.totalBytes));
 
   String current = storageGetCurrentBook();
   bool wokeFromSleep = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0);

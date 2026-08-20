@@ -17,6 +17,13 @@ struct StorageStats {
   size_t usedBytes = 0;
 };
 
+// Where the reader is in a book, plus the trail of pages it came through so
+// that going back keeps working across deep sleep and reboots.
+struct ReadingPosition {
+  uint32_t pos = 0;
+  std::vector<uint32_t> history;
+};
+
 bool storageBegin(bool autoFormat);
 bool storageEnsureDirs();
 std::vector<BookInfo> storageListBooks();
@@ -25,6 +32,6 @@ String storageNormalizeBookPath(const String& path);
 String storageSanitizeFilename(const String& name);
 String storageGetCurrentBook();
 void storageSetCurrentBook(const String& path);
-uint32_t storageLoadProgress(const String& path);
-void storageSaveProgress(const String& path, uint32_t pos);
+ReadingPosition storageLoadPosition(const String& path, uint32_t bookSize);
+bool storageSavePosition(const String& path, const ReadingPosition& position);
 StorageStats storageGetStats();

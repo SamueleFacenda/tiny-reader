@@ -40,7 +40,7 @@ jobs:
       - uses: nicknovitski/nix-develop@v1
 
       - name: Build sketch
-        run: arduino-cli compile --verbose --fqbn esp32:esp32:esp32s3
+        run: arduino-cli compile --verbose --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=huge_app
         
       - name: Build enclosure
         run: openscad -o model.stl tiny_reader_2-13_case.scad

@@ -2,6 +2,44 @@
 
 #include <ctype.h>
 
+static const char* kRecordPrefix = "v1 ";
+
+// Reads the next space separated decimal, returning false at end of record.
+static bool nextUint(const String& record, int& idx, uint32_t& out) {
+  const int len = static_cast<int>(record.length());
+  while (idx < len && record[idx] == ' ') {
+    idx++;
+  }
+  const int start = idx;
+  while (idx < len && isdigit(static_cast<unsigned char>(record[idx]))) {
+    idx++;
+  }
+  if (idx == start) {
+    return false;
+  }
+  out = strtoul(record.substring(start, idx).c_str(), nullptr, 10);
+  return true;
+}
+
+// Guards against a book that was replaced or truncated since it was last read.
+static void dropInvalid(ReadingPosition& position, uint32_t bookSize) {
+  if (bookSize == 0) {
+    return;
+  }
+  if (position.pos >= bookSize) {
+    position.pos = 0;
+    position.history.clear();
+    return;
+  }
+  size_t kept = 0;
+  for (size_t i = 0; i < position.history.size(); ++i) {
+    if (position.history[i] < bookSize) {
+      position.history[kept++] = position.history[i];
+    }
+  }
+  position.history.resize(kept);
+}
+
 static String makeProgressPath(const String& bookPath) {
   String base = bookPath;
   int slash = base.lastIndexOf('/');
@@ -115,25 +153,83 @@ void storageSetCurrentBook(const String& path) {
   file.close();
 }
 
-uint32_t storageLoadProgress(const String& path) {
-  String progressPath = makeProgressPath(path);
-  File file = LittleFS.open(progressPath, "r");
+ReadingPosition storageLoadPosition(const String& path, uint32_t bookSize) {
+  ReadingPosition position;
+
+  File file = LittleFS.open(makeProgressPath(path), "r");
   if (!file) {
-    return 0;
+    return position;
   }
-  uint32_t pos = file.parseInt();
+  String record = file.readStringUntil('\n');
   file.close();
-  return pos;
+  record.trim();
+
+  if (record.length() == 0) {
+    return position;
+  }
+
+  if (!record.startsWith(kRecordPrefix)) {
+    // Records written before history was persisted: a bare byte offset.
+    position.pos = static_cast<uint32_t>(record.toInt());
+    dropInvalid(position, bookSize);
+    return position;
+  }
+
+  int idx = strlen(kRecordPrefix);
+  uint32_t pos = 0;
+  uint32_t count = 0;
+  if (!nextUint(record, idx, pos) || !nextUint(record, idx, count)) {
+    return position;
+  }
+  position.pos = pos;
+  for (uint32_t i = 0; i < count; ++i) {
+    uint32_t entry = 0;
+    if (!nextUint(record, idx, entry)) {
+      break;
+    }
+    position.history.push_back(entry);
+  }
+  dropInvalid(position, bookSize);
+  return position;
 }
 
-void storageSaveProgress(const String& path, uint32_t pos) {
-  String progressPath = makeProgressPath(path);
-  File file = LittleFS.open(progressPath, "w");
+bool storageSavePosition(const String& path, const ReadingPosition& position) {
+  String finalPath = makeProgressPath(path);
+  String tempPath = finalPath + ".tmp";
+
+  File file = LittleFS.open(tempPath, "w");
   if (!file) {
-    return;
+    return false;
   }
-  file.print(pos);
+
+  size_t total = position.history.size();
+  size_t count = (total > Config::READER_HISTORY_MAX) ? Config::READER_HISTORY_MAX : total;
+  file.print(kRecordPrefix);
+  file.print(position.pos);
+  file.print(' ');
+  file.print(count);
+  for (size_t i = total - count; i < total; ++i) {
+    file.print(' ');
+    file.print(position.history[i]);
+  }
+  file.print('\n');
+  bool written = (file.getWriteError() == 0);
   file.close();
+
+  if (!written) {
+    LittleFS.remove(tempPath);
+    Serial.printf("Failed to write %s\n", tempPath.c_str());
+    return false;
+  }
+
+  // Rename over the live record instead of truncating it: littlefs swaps the
+  // two atomically, so losing power here leaves either the previous record or
+  // the new one, never an empty file that would reopen the book at page one.
+  if (LittleFS.rename(tempPath, finalPath)) {
+    return true;
+  }
+  LittleFS.remove(finalPath);
+  return LittleFS.rename(tempPath, finalPath);
 }
 
 StorageStats storageGetStats() {
