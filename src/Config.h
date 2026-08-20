@@ -53,6 +53,9 @@ namespace Config {
   constexpr uint32_t LONG_PRESS_MS = 900UL;
   constexpr uint32_t FS_FORMAT_HOLD_MS = 2500UL;
 
+  // Below this there is nothing to gain from entering light sleep.
+  constexpr uint64_t LIGHT_SLEEP_MIN_US = 20000ULL;
+
   // Keep this much filesystem space free for progress files and metadata
   constexpr uint32_t FS_RESERVE_BYTES = 64UL * 1024UL;
 

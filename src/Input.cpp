@@ -1,5 +1,7 @@
 #include "Input.h"
 
+#include <esp_timer.h>
+
 static uint8_t pinFor(ButtonId id) {
   switch (id) {
     case ButtonId::Home:
@@ -17,6 +19,26 @@ static uint8_t pinFor(ButtonId id) {
   }
 }
 
+static const uint8_t kButtonCount = static_cast<uint8_t>(ButtonId::Count);
+static volatile uint32_t pressCounts[kButtonCount];
+static volatile int64_t lastEdgeUs[kButtonCount];
+static portMUX_TYPE pressMux = portMUX_INITIALIZER_UNLOCKED;
+
+// Must live in IRAM: a progress file is written on every page turn, and the
+// flash cache is disabled during a flash write, so a handler resident in flash
+// would crash the chip if a button were pressed in that window. For the same
+// reason it calls nothing from the Arduino HAL, only esp_timer_get_time.
+static void ARDUINO_ISR_ATTR onButtonEdge(void* arg) {
+  const uint32_t index = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(arg));
+  const int64_t now = esp_timer_get_time();
+  portENTER_CRITICAL_ISR(&pressMux);
+  if (now - lastEdgeUs[index] >= static_cast<int64_t>(Config::BUTTON_DEBOUNCE_MS) * 1000) {
+    lastEdgeUs[index] = now;
+    pressCounts[index]++;
+  }
+  portEXIT_CRITICAL_ISR(&pressMux);
+}
+
 ButtonManager::ButtonState& ButtonManager::state(ButtonId id) {
   return states[static_cast<uint8_t>(id)];
 }
@@ -26,95 +48,68 @@ const ButtonManager::ButtonState& ButtonManager::state(ButtonId id) const {
 }
 
 void ButtonManager::begin() {
-  for (uint8_t i = 0; i < static_cast<uint8_t>(ButtonId::Count); ++i) {
+  for (uint8_t i = 0; i < kButtonCount; ++i) {
     ButtonId id = static_cast<ButtonId>(i);
     ButtonState& st = states[i];
     st.pin = pinFor(id);
-    st.enabled = true;
     st.rawDown = false;
     st.lastDown = false;
-    st.pressedAt = 0;
     st.lastChangeAt = 0;
-    st.longFired = false;
-    st.shortPress = false;
-    st.longPress = false;
+    pressCounts[i] = 0;
+    lastEdgeUs[i] = 0;
     pinMode(st.pin, Config::BUTTON_PULLUP ? INPUT_PULLUP : INPUT);
+    // Buttons pull the pin low, so a press is a falling edge.
+    attachInterruptArg(st.pin, onButtonEdge, reinterpret_cast<void*>(static_cast<uintptr_t>(i)), FALLING);
   }
 }
 
 void ButtonManager::update() {
-  unsigned long now = millis();
-  for (uint8_t i = 0; i < static_cast<uint8_t>(ButtonId::Count); ++i) {
+  const unsigned long now = millis();
+  for (uint8_t i = 0; i < kButtonCount; ++i) {
     ButtonState& st = states[i];
-    if (!st.enabled) {
-      continue;
-    }
-
-    bool rawDown = (digitalRead(st.pin) == LOW);
+    const bool rawDown = (digitalRead(st.pin) == LOW);
     if (rawDown != st.rawDown) {
       st.rawDown = rawDown;
       st.lastChangeAt = now;
-    }
-
-    if (now - st.lastChangeAt < Config::BUTTON_DEBOUNCE_MS) {
       continue;
     }
-
-    bool down = st.rawDown;
-    if (down != st.lastDown) {
-      st.lastDown = down;
-      if (down) {
-        st.pressedAt = now;
-        st.longFired = false;
-      } else {
-        unsigned long held = now - st.pressedAt;
-        if (!st.longFired && held < Config::LONG_PRESS_MS) {
-          st.shortPress = true;
-        }
-      }
+    if (now - st.lastChangeAt >= Config::BUTTON_DEBOUNCE_MS) {
+      st.lastDown = rawDown;
     }
-
-    if (down && !st.longFired) {
-      if (now - st.pressedAt >= Config::LONG_PRESS_MS) {
-        st.longPress = true;
-        st.longFired = true;
-      }
-    }
-
-    st.lastDown = down;
   }
+}
+
+uint8_t ButtonManager::consumePresses(ButtonId id) {
+  const uint8_t index = static_cast<uint8_t>(id);
+  portENTER_CRITICAL(&pressMux);
+  const uint32_t count = pressCounts[index];
+  pressCounts[index] = 0;
+  portEXIT_CRITICAL(&pressMux);
+  return (count > 255) ? 255 : static_cast<uint8_t>(count);
 }
 
 bool ButtonManager::consumeShortPress(ButtonId id) {
-  ButtonState& st = state(id);
-  if (st.shortPress) {
-    st.shortPress = false;
-    return true;
-  }
-  return false;
-}
-
-bool ButtonManager::consumeLongPress(ButtonId id) {
-  ButtonState& st = state(id);
-  if (st.longPress) {
-    st.longPress = false;
-    return true;
-  }
-  return false;
+  return consumePresses(id) > 0;
 }
 
 bool ButtonManager::isDown(ButtonId id) const {
-  const ButtonState& st = state(id);
-  if (!st.enabled) {
-    return false;
-  }
-  return st.lastDown;
+  return state(id).lastDown;
 }
 
-unsigned long ButtonManager::downDuration(ButtonId id) const {
-  const ButtonState& st = state(id);
-  if (!st.lastDown) {
-    return 0;
+bool ButtonManager::anyDown() const {
+  for (uint8_t i = 0; i < kButtonCount; ++i) {
+    if (states[i].lastDown) {
+      return true;
+    }
   }
-  return millis() - st.pressedAt;
+  return false;
+}
+
+bool ButtonManager::anyPending() const {
+  for (uint8_t i = 0; i < kButtonCount; ++i) {
+    if (pressCounts[i] != 0) {
+      return true;
+    }
+  }
+  return false;
 }

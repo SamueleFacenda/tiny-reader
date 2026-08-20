@@ -138,11 +138,11 @@ The scad source is available here or the rendered stl can be downloaded [directl
      ```
 3. Compile the sketch with Arduino CLI
      ```sh
-     arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=huge_app
+     arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=no_ota
      ```
 4. Flash the firmware to the board (port may vary)
     ```sh
-    arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=huge_app --verbose 
+    arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=no_ota --verbose 
     ```
 
 The flake provides the Arduino CLI, ESP32 board packages, Python serial support, and OpenSCAD.
@@ -189,9 +189,14 @@ other way round.
 UTF-8 becomes latin-1 (accents are kept, typographic quotes and dashes are flattened),
 hyphenated line breaks are rejoined, and paragraphs are unwrapped so the reader can fill
 every line of the small screen.
-3. Use the physical buttons to navigate the library, reading view, and status screens.
-4. Let the device enter deep sleep when idle to preserve battery life.
-5. Wake from the deep sleep using the `home` button.
+3. Use the physical buttons to navigate the library, reading view, and status screens. Presses
+are never lost while the screen is updating, so the lever can be pushed repeatedly to scroll
+several pages ahead in one refresh.
+4. Press OK while reading for a deep clean refresh, which clears the ghosting that sunlight
+makes visible.
+5. Let the device enter deep sleep when idle to preserve battery life. Between page turns it
+already drops into light sleep, waking on a button.
+6. Wake from the deep sleep using the `home` button.
 
 See the source files for the screen flow and button mapping.
 

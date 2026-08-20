@@ -17,15 +17,20 @@ pyserial, openscad). `.envrc` is `use flake`, so direnv users already have it.
 
 ```sh
 nix develop                                            # or rely on direnv
-FQBN=esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=huge_app
+FQBN=esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=no_ota
 arduino-cli compile --fqbn $FQBN                       # what CI runs
 arduino-cli upload -p /dev/ttyUSB0 --fqbn $FQBN
 openscad -o model.stl tiny_reader_2-13_case.scad        # what CI runs
 ```
 
 The board options are not optional. `FlashSize=8M` is needed because the board has 8MB and the
-stock `esp32s3` default is `4M`; `PartitionScheme=huge_app` only satisfies arduino-cli's
-max-app-size accounting, since the real table comes from `partitions.csv` (see below). There are
+stock `esp32s3` default is `4M`. `PartitionScheme=no_ota` does not pick the layout — `partitions.csv`
+in the sketch root overrides it (see below) — it picks the size guard: arduino-cli checks the
+sketch against the menu option's `upload.maximum_size`, and `no_ota` declares exactly 2,097,152
+bytes, which is our real `app0`. Pick a roomier scheme and the guard goes slack: `huge_app` would
+report a 3MB limit and wave through a sketch that overflows `app0` into the filesystem. `no_ota` is
+also the safest fallback, since its stock CSV puts a 2MB `app0` at the same offset, so a checkout
+missing `partitions.csv` still boots and just gets a smaller library. There are
 no tests and no host-side build; CI (`.github/workflows/main.yml`) only checks that the sketch
 compiles and the SCAD file renders.
 
@@ -61,11 +66,25 @@ stateless-ish:
 
 ## Non-obvious behaviour
 
-**Pagination is a rendering side effect.** Pages are never precomputed. `readPage()` grabs a
-fixed `Config::READ_BUFFER_SIZE` (512-byte) chunk, `uiDrawReader()` word-wraps as much of it as
-fits and writes back how much it consumed via `const_cast<ReaderView&>(view).bytesConsumed`,
-and `renderCurrentPage()` derives `nextPagePos` from that. Touching the wrap loop in `Ui.cpp`
-changes where pages break. Keep the `bytesConsumed` contract intact.
+**Pagination comes out of the wrap, and `src/TextWrap.h` owns it.** Pages are never precomputed.
+`readPageAt()` grabs a fixed `Config::READ_BUFFER_SIZE` (512-byte) chunk into the shared
+`pageBuffer`, `TextWrap::wrapPage()` lays it out, and the byte count it returns becomes
+`nextPagePos`. Two callers share that one function: `uiDrawReader` (draws each line with
+`display.write`) and `uiMeasurePage` (draws nothing, so several pages can be skipped on one
+refresh). `wrapPage` has three invariants that the reader cannot survive losing:
+
+- A word wider than the line is accepted anyway rather than split, so the page always advances.
+- It never returns 0 for non-empty input; `nextPagePos == pagePos` means Next stops working.
+- Trailing whitespace that produced no line still counts as consumed, for the same reason.
+
+`wrapPage` deliberately has no Arduino or GxEPD2 dependency so it compiles on a host: check it
+with `g++ -std=c++11` and a stub `charWidth` before trusting a change. **There is no committed
+test, so these invariants are unguarded** — a regression here shows up as a book that freezes on
+one page. Also note the sketch is built as `gnu++11`, where a struct with default member
+initializers is not an aggregate: that is why `TextWrap::Line` has none.
+
+`charWidth` must return 0 for bytes the renderer does not draw (outside the font's
+`0x20`–`0xFE`, plus `\r`), or the measurement stops matching the pixels.
 
 **Back navigation is persisted.** `reader.history` is a vector capped at
 `Config::READER_HISTORY_MAX`, saved with the position on every page turn and restored by
@@ -88,9 +107,19 @@ deep sleep with EXT0 wake on `PIN_BTN_OK` only — no other button wakes it. `sl
 `RTC_DATA_ATTR` and is the only thing that tells `setup()` whether to reopen the book or show
 the menu. Sleep is suppressed while the web portal is up.
 
-**E-paper refresh discipline.** Partial refreshes are counted and forced back to a full refresh
-every `PARTIAL_REFRESH_LIMIT` pages (and `WIFI_SETTINGS_FULL_REFRESH_EVERY` on the Wi-Fi
-screen) to clear ghosting. Screen entry via `showScreen()` always draws full.
+**E-paper refresh discipline.** The panel declares `full_refresh_time = 1700ms` against
+`partial_refresh_time = 500ms`. Page turns are partial, and `partialsSinceFull` forces one full
+draw every `Config::PARTIAL_REFRESH_LIMIT` turns to clear the ghosting partial updates leave
+behind (`WIFI_SETTINGS_FULL_REFRESH_EVERY` does the same on the Wi-Fi screen). Because queued
+presses collapse into a single paint, that counter tracks paints rather than presses, so fast
+scrolling costs fewer full refreshes than one per ten presses. Screen entry via `showScreen()`
+always draws full, and `Ok` in the read view is a manual deep clean (`clearScreen()` plus a full
+re-render) for ghosting that sunlight makes obvious.
+
+Nothing cleans the screen before deep sleep on purpose: waking runs `setup()` and repaints fully,
+and the only thing a pre-sleep refresh would improve is an image nobody is looking at. If you ever
+do add a refresh there, note that `display.refresh()` writes commands without waking a hibernating
+controller, so it must come before `display.hibernate()` or it silently does nothing.
 
 **Font switching.** The reader sets the custom GFX font and restores `setFont(nullptr)` (the
 built-in 5x7) plus `setTextWrap(true)` before returning. Menu screens assume that state.
@@ -106,6 +135,31 @@ pin constants (`PIN_OK`, `PIN_EXIT`, `PIN_PREV`, `PIN_NEXT`) and `DISPLAY_ROTATI
 reads only the logical names, never the physical `PIN_BTN_*` ones. Note `PIN_OK` intentionally
 maps to the pin named `PIN_BTN_HOME` and vice versa, and `PIN_WAKE` is a physical pin that the
 flag does not touch.
+
+**Input is interrupt-latched, and the handler must stay in IRAM.** `ButtonManager` counts
+falling edges in an `ARDUINO_ISR_ATTR` handler rather than polling for presses, so nothing is
+lost while the panel refreshes for 500-1700ms or while a progress file is being written. Three
+rules hold it together: the handler stays IRAM-resident because a press can arrive while the
+flash cache is disabled during that write; it calls nothing from the Arduino HAL (`digitalRead`
+is not IRAM-safe in arduino-esp32 2.0.x) and debounces on `esp_timer_get_time()`; and the
+counters are consumed under `portENTER_CRITICAL` so a press arriving mid-consume is not dropped.
+Polling survives only to maintain `isDown()`, which the "hold OK to format" screen needs.
+
+**Queued presses skip, they do not queue refreshes.** `consumePresses()` returns a count, and
+`advancePages(n)` walks `n` boundaries with `uiMeasurePage` before painting once — mashing Next
+during a refresh scrolls rather than costing a refresh per press. The menu screens do the same,
+which matters because they all draw with `setFullWindow`. At the end of a book Next now holds the
+last page instead of rendering an empty one.
+
+**Light sleep runs between page turns, and it fights with the press interrupt.** `maybeLightSleep()`
+sleeps until the deep-sleep deadline with level-triggered GPIO wake, since
+reading a page is otherwise 30-plus seconds of spinning at full clock. Two traps: ESP-IDF's
+`gpio_wakeup_enable()` overwrites the pin's interrupt type with the level it wakes on, so the
+falling edge must be restored with `gpio_set_intr_type(pin, GPIO_INTR_NEGEDGE)` after every wake
+or a held button re-fires the handler forever; and the GPIO and timer wake sources must be
+disabled before `esp_deep_sleep_start()`, which wakes from `ext0` alone. `millis()` is
+`esp_timer`-backed and keeps advancing across light sleep, so the inactivity arithmetic still
+holds. The portal and the error screen are excluded because both need the CPU.
 
 **Serial logging is load-bearing for debugging.** `logState()` and the `BTN ...` prints at
 115200 baud are the only way to observe the state machine on device; keep them when editing

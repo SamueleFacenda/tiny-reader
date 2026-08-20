@@ -1,5 +1,6 @@
 #include "Ui.h"
 #include "FreeSerif9pt8b.h"
+#include "TextWrap.h"
 
 static UiLayout layout;
 static UiLayout readerLayout;
@@ -76,7 +77,30 @@ static String trimToWidth(const String& text, int16_t maxChars) {
   return text.substring(0, maxChars - 3) + "...";
 }
 
-// Note: wrapping now handled directly in uiDrawReader for raw text buffers
+// How far the renderer advances for one byte of reader text. Bytes outside the
+// font range are skipped by Adafruit_GFX without moving the cursor, so they must
+// measure as 0 for the layout to match what actually lands on the screen.
+// Flash is memory mapped on the ESP32, so the tables are read directly.
+static int16_t readerCharWidth(unsigned char c) {
+  if (c < FreeSerif9pt8b.first || c > FreeSerif9pt8b.last) {
+    return 0;
+  }
+  const GFXglyph& glyph = FreeSerif9pt8b.glyph[c - FreeSerif9pt8b.first];
+  return static_cast<int16_t>(glyph.xAdvance) * Config::READER_TEXT_SIZE;
+}
+
+// Left side bearing of a glyph, so a line starts flush with the content edge.
+static int16_t readerCharBearing(unsigned char c) {
+  if (c < FreeSerif9pt8b.first || c > FreeSerif9pt8b.last) {
+    return 0;
+  }
+  return FreeSerif9pt8b.glyph[c - FreeSerif9pt8b.first].xOffset * Config::READER_TEXT_SIZE;
+}
+
+size_t uiMeasurePage(const char* text, size_t len) {
+  return TextWrap::wrapPage(text, len, readerLayout.contentW, readerLayout.maxLines,
+                            readerCharWidth, [](const TextWrap::Line&, int16_t) {});
+}
 
 void uiInit(EpdDisplay& display) {
   display.init(115200);
@@ -114,10 +138,11 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
     display.setFullWindow();
   }
   
-  display.firstPage();
+  const char* text = view.text;
+  const size_t textLen = (text != nullptr) ? view.textLen : 0;
   size_t bytesRendered = 0;
-  const size_t textLen = view.text.length(); // Cache length to save method calls
-  
+
+  display.firstPage();
   do {
     if (!partial) {
       display.fillScreen(GxEPD_WHITE);
@@ -125,64 +150,19 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
       display.fillRect(r.contentX, r.contentY, r.contentW, r.height - r.contentY, GxEPD_WHITE);
     }
 
-    int16_t visualLineIndex = 0;
-    bytesRendered = 0;
-    size_t charPos = 0;
-
-    // Text Parsing and Rendering
-    while (charPos < textLen && visualLineIndex < r.maxLines) {
-      String lineText = "";
-      int16_t lastLineX1 = 0; // Cached to avoid recalculating text bounds
-
-      while (charPos < textLen) {
-        // Skip spaces, tabs, and carriage returns
-        while (charPos < textLen && (view.text[charPos] == ' ' || view.text[charPos] == '\t' || view.text[charPos] == '\r')) {
-          charPos++;
+    bytesRendered = TextWrap::wrapPage(
+      text, textLen, r.contentW, r.maxLines, readerCharWidth,
+      [&](const TextWrap::Line& line, int16_t index) {
+        if (line.len == 0) {
+          return;   // paragraph break: an empty visual line
         }
-
-        if (charPos >= textLen) break;
-
-        // If explicit newline, consume it, save progress, and move to next visual line
-        if (view.text[charPos] == '\n') {
-          charPos++;
-          bytesRendered = charPos;
-          break; 
+        const unsigned char first = static_cast<unsigned char>(text[line.start]);
+        display.setCursor(r.contentX - readerCharBearing(first),
+                          lineBaselineY + index * r.lineHeight);
+        for (size_t i = 0; i < line.len; ++i) {
+          display.write(text[line.start + i]);
         }
-
-        // Find the end of the current word
-        size_t wordEnd = charPos;
-        while (wordEnd < textLen && view.text[wordEnd] != ' ' && view.text[wordEnd] != '\t' && view.text[wordEnd] != '\n' && view.text[wordEnd] != '\r') {
-          wordEnd++;
-        }
-
-        // Build and measure a test line
-        String word = view.text.substring(charPos, wordEnd);
-        String candidateLine = lineText.isEmpty() ? word : lineText + " " + word;
-        int16_t x1 = 0, y1 = 0;
-        uint16_t w = 0, h = 0;
-        display.getTextBounds(candidateLine.c_str(), 0, 0, &x1, &y1, &w, &h);
-
-        // If the word doesn't fit (and it's not the only word on the line), leave it for the next line
-        if (static_cast<int16_t>(w) > r.contentW && !lineText.isEmpty()) {
-          break; 
-        }
-
-        // Accept the word into the current line
-        lineText = candidateLine;
-        lastLineX1 = x1;       // Save x1 offset for printing later
-        charPos = wordEnd;     // Advance pointer past this word
-        bytesRendered = charPos;
-      }
-
-      // Render the compiled line (if any text was collected)
-      if (!lineText.isEmpty()) {
-        display.setCursor(r.contentX - lastLineX1, lineBaselineY + static_cast<int16_t>(visualLineIndex) * r.lineHeight);
-        display.print(lineText);
-      }
-
-      // Always advance the line index (handles both printed lines and explicit empty \n lines)
-      visualLineIndex++;
-    }
+      });
 
     // Render Progress Bar
     int16_t barY = r.height - 1;

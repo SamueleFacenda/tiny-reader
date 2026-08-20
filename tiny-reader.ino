@@ -8,6 +8,7 @@
 #include "src/Ui.h"
 #include "src/WebPortal.h"
 
+#include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
 
@@ -23,13 +24,6 @@ enum class ScreenId : uint8_t {
   Error = 6
 };
 
-struct PageData {
-  String text;           // raw text (not pre-wrapped)
-  uint32_t startPos = 0; // byte position in file where this text starts
-  uint32_t endPos = 0;   // byte position in file after this text
-  bool eof = false;      // true if we've reached end of file
-};
-
 struct ReaderState {
   File file;
   String path;
@@ -40,12 +34,14 @@ struct ReaderState {
 };
 
 static ReaderState reader;
+// One page of raw bytes, reused for both drawing and paintless measurement.
+static char pageBuffer[Config::READ_BUFFER_SIZE];
 static ButtonManager buttons;
 static ScreenId screen = ScreenId::MenuLibrary;
 static unsigned long lastActivity = 0;
 static unsigned long lastWifiRefresh = 0;
 static uint16_t wifiPartialCount = 0;
-static uint8_t partialCount = 0;
+static uint8_t partialsSinceFull = 0;
 static std::vector<BookInfo> libraryBooks;
 static int libraryIndex = 0;
 static int libraryScroll = 0;
@@ -129,26 +125,22 @@ static String titleFromPath(const String& path) {
   return name;
 }
 
-static PageData readPage(File& file) {
-  // Read a raw chunk of bytes (Config::READ_BUFFER_SIZE) from the file and return as text.
-  PageData page;
-  page.startPos = file.position();
-
-  const int READ_BUFFER = Config::READ_BUFFER_SIZE;
-
-  // stack allocation is OK for moderate buffer sizes
-  char buffer[READ_BUFFER];
-  int bytesRead = file.read(reinterpret_cast<uint8_t*>(buffer), READ_BUFFER);
-
-  if (bytesRead > 0) {
-    page.text = String(reinterpret_cast<char*>(buffer), bytesRead);
-  } else {
-    page.text = "";
+// Reads one page worth of raw bytes at pos into pageBuffer, returning the count.
+static size_t readPageAt(uint32_t pos) {
+  if (!reader.file) {
+    return 0;
   }
+  reader.file.seek(pos);
+  int bytesRead = reader.file.read(reinterpret_cast<uint8_t*>(pageBuffer), sizeof(pageBuffer));
+  return (bytesRead > 0) ? static_cast<size_t>(bytesRead) : 0;
+}
 
-  page.endPos = file.position();
-  page.eof = !file.available();
-  return page;
+// Where the page starting at pos would end, without drawing anything.
+static uint32_t pageEndAt(uint32_t pos) {
+  size_t available = readPageAt(pos);
+  size_t consumed = uiMeasurePage(pageBuffer, available);
+  uint32_t end = pos + static_cast<uint32_t>(consumed);
+  return (end > reader.size) ? reader.size : end;
 }
 
 static void refreshLibrary() {
@@ -252,7 +244,7 @@ static void openBook(const String& path, bool resetPos) {
   reader.file.seek(reader.pagePos);
   reader.history = saved.history;
   storageSetCurrentBook(reader.path);
-  partialCount = 0;
+  partialsSinceFull = 0;
   Serial.printf("Opened book: %s (%u bytes)\n", reader.path.c_str(), static_cast<unsigned>(reader.size));
 }
 
@@ -267,20 +259,23 @@ static void renderCurrentPage(bool allowPartial) {
   if (!reader.file) {
     return;
   }
-  const UiLayout& layout = uiReaderLayout();
-  reader.file.seek(reader.pagePos);
-  PageData page = readPage(reader.file);
+  size_t available = readPageAt(reader.pagePos);
   saveReaderPosition();
 
   ReaderView view;
   view.title = titleFromPath(reader.path);
-  view.text = page.text;
+  view.text = pageBuffer;
+  view.textLen = available;
   view.bytesConsumed = 0;
   view.progressPercent = (reader.size > 0)
                            ? static_cast<uint8_t>(min<uint32_t>(100, (reader.pagePos * 100UL) / reader.size))
                            : 0;
 
-  bool usePartial = allowPartial && (partialCount < Config::PARTIAL_REFRESH_LIMIT);
+  // Every PARTIAL_REFRESH_LIMIT turns one page is drawn fully instead of
+  // partially, which clears the ghosting the partial updates leave behind. With
+  // several queued presses collapsing into one paint, this counts paints rather
+  // than presses, so fast scrolling costs fewer full refreshes than it used to.
+  const bool usePartial = allowPartial && (partialsSinceFull < Config::PARTIAL_REFRESH_LIMIT);
   uiDrawReader(display, view, usePartial);
   
   // Set nextPagePos based on how many bytes were actually rendered
@@ -293,9 +288,9 @@ static void renderCurrentPage(bool allowPartial) {
   }
   
   if (usePartial) {
-    partialCount++;
+    partialsSinceFull++;
   } else {
-    partialCount = 0;
+    partialsSinceFull = 0;
   }
   Serial.printf("Rendered page at %u next=%u consumed=%u heap=%u maxalloc=%u\n",
                 static_cast<unsigned>(reader.pagePos),
@@ -305,26 +300,57 @@ static void renderCurrentPage(bool allowPartial) {
                 static_cast<unsigned>(ESP.getMaxAllocHeap()));
 }
 
-static void renderNextPage() {
-  if (!reader.file) {
+// Advances count pages but paints only the one we land on: the intermediate
+// boundaries are measured without touching the panel, which is what makes
+// holding the lever feel like scrolling instead of queueing refreshes.
+static void advancePages(uint8_t count) {
+  if (!reader.file || count == 0) {
     return;
   }
-  reader.history.push_back(reader.pagePos);
-  if (reader.history.size() > Config::READER_HISTORY_MAX) {
-    reader.history.erase(reader.history.begin());
+  uint8_t skipped = 0;
+  for (uint8_t i = 0; i < count; ++i) {
+    if (reader.nextPagePos >= reader.size || reader.nextPagePos == reader.pagePos) {
+      break;   // end of book, or a page that consumed nothing
+    }
+    reader.history.push_back(reader.pagePos);
+    if (reader.history.size() > Config::READER_HISTORY_MAX) {
+      reader.history.erase(reader.history.begin());
+    }
+    reader.pagePos = reader.nextPagePos;
+    skipped++;
+    if (i + 1 < count) {
+      reader.nextPagePos = pageEndAt(reader.pagePos);
+    }
   }
-  reader.pagePos = reader.nextPagePos;
+  if (skipped == 0) {
+    return;
+  }
+  if (skipped > 1) {
+    Serial.printf("Skipped %u pages without painting\n", static_cast<unsigned>(skipped - 1));
+  }
   renderCurrentPage(true);
 }
 
-static void renderPrevPage() {
-  if (reader.history.empty()) {
+static void goBackPages(uint8_t count) {
+  if (reader.history.empty() || count == 0) {
     return;
   }
-  reader.pagePos = reader.history.back();
-  reader.history.pop_back();
+  while (count > 0 && !reader.history.empty()) {
+    reader.pagePos = reader.history.back();
+    reader.history.pop_back();
+    count--;
+  }
   reader.nextPagePos = reader.pagePos;
   renderCurrentPage(true);
+}
+
+// Sunlight makes accumulated ghosting obvious. A white flash plus a full
+// re-render is the strongest cleanup the panel offers from firmware.
+static void deepClean() {
+  Serial.println("Deep clean refresh");
+  display.clearScreen();
+  partialsSinceFull = 0;
+  renderCurrentPage(false);
 }
 
 static float readBatteryVoltage() {
@@ -466,6 +492,68 @@ static bool ensureStorageReady() {
   }
 }
 
+// Steps through the menu cycle without repainting the screens in between.
+static void stepMenu(int steps) {
+  ScreenId target = screen;
+  for (int i = 0; i < steps; ++i) {
+    target = nextMenu(target);
+  }
+  for (int i = 0; i > steps; --i) {
+    target = previousMenu(target);
+  }
+  showScreen(target);
+}
+
+// How long the loop may sleep before it has work to do again.
+static uint64_t microsecondsUntilDeadline() {
+  const unsigned long elapsed = millis() - lastActivity;
+  if (elapsed >= Config::INACTIVITY_SLEEP_MS) {
+    return 0;
+  }
+  return static_cast<uint64_t>(Config::INACTIVITY_SLEEP_MS - elapsed) * 1000ULL;
+}
+
+// Reading a page is idle time: rather than spinning at full clock until the
+// deep sleep timeout, the CPU sleeps and a button wakes it. RAM and execution
+// state survive, so the loop simply carries on. Light sleep GPIO wake is level
+// triggered, hence the low level and the check that nothing is held down.
+static void maybeLightSleep() {
+  if (webPortalActive() || screen == ScreenId::Error) {
+    return;
+  }
+  if (buttons.anyPending() || buttons.anyDown()) {
+    return;
+  }
+  const uint64_t us = microsecondsUntilDeadline();
+  if (us < Config::LIGHT_SLEEP_MIN_US) {
+    return;
+  }
+
+  const gpio_num_t wakePins[] = {
+    static_cast<gpio_num_t>(Config::PIN_OK),
+    static_cast<gpio_num_t>(Config::PIN_EXIT),
+    static_cast<gpio_num_t>(Config::PIN_PREV),
+    static_cast<gpio_num_t>(Config::PIN_NEXT),
+    static_cast<gpio_num_t>(Config::PIN_HOME)
+  };
+  for (gpio_num_t pin : wakePins) {
+    gpio_wakeup_enable(pin, GPIO_INTR_LOW_LEVEL);
+  }
+  esp_sleep_enable_gpio_wakeup();
+  esp_sleep_enable_timer_wakeup(us);
+
+  Serial.flush();   // the UART would otherwise garble mid-line
+  esp_light_sleep_start();
+
+  // gpio_wakeup_enable() rewrites the pin interrupt type to the level it wakes
+  // on, which would leave the press handler re-firing for as long as a button
+  // is held. Put the falling edge back and drop the wake registration.
+  for (gpio_num_t pin : wakePins) {
+    gpio_wakeup_disable(pin);
+    gpio_set_intr_type(pin, GPIO_INTR_NEGEDGE);
+  }
+}
+
 static void maybeDeepSleep() {
   if (screen == ScreenId::Error) {
     return;
@@ -482,6 +570,9 @@ static void maybeDeepSleep() {
     saveReaderPosition();
   }
   display.hibernate();
+  // Light sleep armed these; deep sleep wakes from ext0 alone.
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)Config::PIN_WAKE, 0);
   delay(50);
   esp_deep_sleep_start();
@@ -590,31 +681,46 @@ void loop() {
     action = true;
   }
 
+  // Next/Prev step the menu cycle identically on every menu screen, and several
+  // presses collapse into a single repaint (these screens refresh fully).
+  if (isMenuScreen(screen)) {
+    uint8_t forward = buttons.consumePresses(ButtonId::Next);
+    if (forward > 0) {
+      Serial.printf("BTN Next x%u\n", static_cast<unsigned>(forward));
+      stepMenu(forward);
+      action = true;
+    }
+    uint8_t backward = buttons.consumePresses(ButtonId::Prev);
+    if (backward > 0) {
+      Serial.printf("BTN Prev x%u\n", static_cast<unsigned>(backward));
+      stepMenu(-static_cast<int>(backward));
+      action = true;
+    }
+  }
+
   switch (screen) {
-    case ScreenId::Reader:
-      if (buttons.consumeShortPress(ButtonId::Next)) {
-        Serial.println("BTN Next");
-        renderNextPage();
+    case ScreenId::Reader: {
+      uint8_t forward = buttons.consumePresses(ButtonId::Next);
+      if (forward > 0) {
+        Serial.printf("BTN Next x%u\n", static_cast<unsigned>(forward));
+        advancePages(forward);
         action = true;
       }
-      if (buttons.consumeShortPress(ButtonId::Prev)) {
-        Serial.println("BTN Prev");
-        renderPrevPage();
+      uint8_t backward = buttons.consumePresses(ButtonId::Prev);
+      if (backward > 0) {
+        Serial.printf("BTN Prev x%u\n", static_cast<unsigned>(backward));
+        goBackPages(backward);
+        action = true;
+      }
+      if (buttons.consumeShortPress(ButtonId::Ok)) {
+        Serial.println("BTN Ok");
+        deepClean();
         action = true;
       }
       break;
+    }
     case ScreenId::MenuLibrary:
       // Menu-focused: Next/Prev move the active menu, OK enters ChooseBook
-      if (buttons.consumeShortPress(ButtonId::Next)) {
-        Serial.println("BTN Next");
-        showScreen(nextMenu(screen));
-        action = true;
-      }
-      if (buttons.consumeShortPress(ButtonId::Prev)) {
-        Serial.println("BTN Prev");
-        showScreen(previousMenu(screen));
-        action = true;
-      }
       if (buttons.consumeShortPress(ButtonId::Ok)) {
         Serial.println("BTN Ok");
         refreshLibrary();
@@ -632,10 +738,12 @@ void loop() {
       }
       break;
     case ScreenId::ChooseBook:
-      if (buttons.consumeShortPress(ButtonId::Next)) {
-        Serial.println("BTN Next");
+      {
+      uint8_t forward = buttons.consumePresses(ButtonId::Next);
+      if (forward > 0) {
+        Serial.printf("BTN Next x%u\n", static_cast<unsigned>(forward));
         if (!libraryBooks.empty()) {
-          libraryIndex = min(libraryIndex + 1, static_cast<int>(libraryBooks.size()) - 1);
+          libraryIndex = min(libraryIndex + forward, static_cast<int>(libraryBooks.size()) - 1);
           int maxVisible = uiLayout().maxLines;
           if (libraryIndex >= libraryScroll + maxVisible) {
             libraryScroll = libraryIndex - maxVisible + 1;
@@ -648,10 +756,11 @@ void loop() {
         }
         action = true;
       }
-      if (buttons.consumeShortPress(ButtonId::Prev)) {
-        Serial.println("BTN Prev");
+      uint8_t backward = buttons.consumePresses(ButtonId::Prev);
+      if (backward > 0) {
+        Serial.printf("BTN Prev x%u\n", static_cast<unsigned>(backward));
         if (!libraryBooks.empty()) {
-          libraryIndex = max(libraryIndex - 1, 0);
+          libraryIndex = max(libraryIndex - backward, 0);
           if (libraryIndex < libraryScroll) {
             libraryScroll = libraryIndex;
           }
@@ -662,6 +771,7 @@ void loop() {
           uiDrawLibrary(display, libraryBooks, libraryIndex, libraryScroll);
         }
         action = true;
+      }
       }
       if (buttons.consumeShortPress(ButtonId::Ok)) {
         Serial.println("BTN Ok");
@@ -677,16 +787,6 @@ void loop() {
       }
       break;
     case ScreenId::MenuWifi:
-      if (buttons.consumeShortPress(ButtonId::Next)) {
-        Serial.println("BTN Next");
-        showScreen(nextMenu(screen));
-        action = true;
-      }
-      if (buttons.consumeShortPress(ButtonId::Prev)) {
-        Serial.println("BTN Prev");
-        showScreen(previousMenu(screen));
-        action = true;
-      }
       if (buttons.consumeShortPress(ButtonId::Ok)) {
         Serial.println("BTN Ok");
         if (!webPortalActive()) {
@@ -701,16 +801,6 @@ void loop() {
       }
       break;
     case ScreenId::MenuInfo:
-      if (buttons.consumeShortPress(ButtonId::Next)) {
-        Serial.println("BTN Next");
-        showScreen(nextMenu(screen));
-        action = true;
-      }
-      if (buttons.consumeShortPress(ButtonId::Prev)) {
-        Serial.println("BTN Prev");
-        showScreen(previousMenu(screen));
-        action = true;
-      }
       if (buttons.consumeShortPress(ButtonId::Ok)) {
         Serial.println("BTN Ok");
         Serial.println("Refreshing info screen");
@@ -725,16 +815,6 @@ void loop() {
         showScreen(ScreenId::WifiSettings);
         action = true;
       }
-      if (buttons.consumeShortPress(ButtonId::Next)) {
-        Serial.println("BTN Next");
-        showScreen(nextMenu(screen));
-        action = true;
-      }
-      if (buttons.consumeShortPress(ButtonId::Prev)) {
-        Serial.println("BTN Prev");
-        showScreen(previousMenu(screen));
-        action = true;
-      }
       break;
     case ScreenId::Error:
       break;
@@ -745,4 +825,5 @@ void loop() {
   }
 
   maybeDeepSleep();
+  maybeLightSleep();
 }
