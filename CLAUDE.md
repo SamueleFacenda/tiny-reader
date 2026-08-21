@@ -40,7 +40,10 @@ openscad -o model.stl tiny_reader_2-13_case.scad        # what CI runs
 `tiny-reader.ino` holds the state machine: `ScreenId`, transitions, the handlers `loop()`
 dispatches to, and the sleep policy. The `src/` modules stay dumb:
 
-- `Config.h` — the single tuning point: pins, timings, AP credentials, driver, battery scaling.
+- `Config.h` — the single tuning point: pins, timings, AP credentials, panel revision, battery
+  scaling. `EpdDriver`/`EpdDisplay` sit below the namespace, since they read `PANEL_JD79661`.
+- `GxEPD2_213_JD79661.{h,cpp}` — GxEPD2 panel class for the second display module revision, the
+  only first-party file that talks to a controller directly.
 - `TextWrap.h` — word wrapping, header-only, free of Arduino/GxEPD2 so it compiles on a host.
 - `Ui.cpp` — all GxEPD2 drawing, layouts, every screen. `Storage.cpp` — LittleFS books under
   `/books`, positions, stats. `Input.cpp` — `ButtonManager`. `WebPortal.cpp` — SoftAP, web
@@ -85,12 +88,39 @@ closing burst and the release burst are separated by however long the button was
 is read straight from `GPIO.in` since `digitalRead` is not IRAM-safe; that assumes every button
 pin is below GPIO32.
 
-**Refresh discipline.** The panel wants 1700ms full against 500ms partial. Turns are partial and
+**Display module revisions.** Elecrow ships two different panels under the one 2.13" part number
+and documents neither: an SSD1680Z one and a JD79661/EK79029 one, listed side by side as `Driver
+Chip: SSD1680Z, JD79661` in the vendor readme, with a datasheet each. `Config::PANEL_JD79661`
+selects between them and derives `EPD_RESET_DURATION_MS`; it feeds `EpdDriver` at the bottom of
+`Config.h` through `std::conditional`, because a panel class is a type and cannot be picked by a
+ternary. Pins, buttons and the visible 122x250 area are identical, so **the only symptom of a wrong
+flag is a blank screen and `Busy Timeout!` on serial** — BUSY is active high on the SSD1680 and
+active **low** on the JD79661, so a driver built for the other one waits ten seconds for an edge
+that never comes. `src/GxEPD2_213_JD79661.{h,cpp}` is ours: the image path is GxEPD2's
+`epd/GxEPD2_154_M09` (JD79653A, the b/w sibling) with the previous-frame plane moved from `0x26` to
+`0x10` and the `0x91`/`0x92` partial-in/out pair dropped, and everything panel-specific comes from
+Elecrow's `example/arduino-v1.2/main/EPD_Init.cpp`. The waveform is **downloaded from RAM** into
+`0x20`–`0x24`, 56 bytes per register, and `_writeLut` swaps which of `0x22`/`0x23` receives which
+table on alternate calls — that is VCOM balancing, not redundancy, so do not simplify it away.
+Elecrow's `EPD_HW_Init_Fast`, `EPD_Update_Fast`, `EPD_PartUpdate` and `EPD_ALL_Fill` in that file
+are unconverted SSD1680 leftovers still sending `0x22`/`0x20`/`0x3C`, three of them dead but
+`EPD_ALL_Fill` still live in their own `clear_all()`: they are not a reference. Neither is
+**GxEPD2's own JD79661 driver** — `epd4c/GxEPD2_213c_GDEY0213F51`, advertised in the library README
+as `2.13" 4-color 122x250, JD79661`, is the obvious thing to reach for and is the wrong panel mode:
+one 2-bit-per-pixel plane at `0x10`, no fast partial update, a 25s full refresh. Read it only for
+the controller's opcodes (`0x83` partial window, `0x02`+`0x00` power off, BUSY low), and note the
+two siblings disagree on both that window opcode and the length of `0x61` TRES — three bytes is the
+b/w form, which is what Elecrow sends. **The DU partial path is ours, not vendor-proven:** Elecrow
+ships the DU tables but never calls `lut_DU()`, so their firmware only ever full-refreshes.
+
+**Refresh discipline.** The SSD1680 panel wants 1700ms full against 500ms partial, the JD79661 the
+same 1700ms against a DU waveform its own table labels 300ms. Turns are partial and
 `partialsSinceFull` forces a full draw every `PARTIAL_REFRESH_LIMIT` *paints*, not presses, so
 fast scrolling cannot skip past it. `showScreen()` always draws full. `Ok` in the read view is a
 manual deep clean for sun ghosting. Nothing refreshes before deep sleep on purpose: waking
-repaints fully anyway. `display.init(0)`, not a bitrate: a nonzero one sets GxEPD2's
-`_diag_enabled` and every busy wait then prints a timing line, burying the state log. The sketch
+repaints fully anyway. The leading `0` in `display.init(0, true, EPD_RESET_DURATION_MS, false)` is
+not a bitrate: a nonzero one sets GxEPD2's `_diag_enabled` and every busy wait then prints a timing
+line, burying the state log. The four-argument overload is there only for the reset duration. The sketch
 owns `Serial.begin()`.
 
 **The portal screen must not repaint on a timer.** `serviceWebPortal` compares the connected
@@ -163,7 +193,8 @@ SPECIFICATIONS ---` and `--- ADJUSTMENT PARAMETERS ---`; adjust those, not numbe
 minkowski sums. `--- RENDER ---` lays out every printable part so one render gives the whole
 plate. The `import("output.stl")` fit check stays commented out — that STL is gitignored, so the
 file must render without it. `CrowPanel-ESP32-.../` is a gitignored vendor clone, for pin
-mappings and datasheets only.
+mappings and datasheets only — including `Datasheet/EK79029DS-JD79661_Datasheet.pdf`, the other
+half of any JD79661 register question.
 
 ## Conventions
 

@@ -2,15 +2,25 @@
 
 #include <Arduino.h>
 #include <GxEPD2_BW.h>
+#include <type_traits>
 
-// Display driver selection
-#define EPD_DRIVER_CLASS GxEPD2_213_GDEY0213B74
-using EpdDisplay = GxEPD2_BW<EPD_DRIVER_CLASS, EPD_DRIVER_CLASS::HEIGHT>;
+#include "GxEPD2_213_JD79661.h"
 
 namespace Config {
   // Set to true to hold the device the other way round: the screen is rotated
   // 180 degrees and the button pairs a flipped grip swaps are exchanged.
   constexpr bool LEFT_HANDED = false;
+
+  // Elecrow ships two different display modules under one 2.13" part number and documents
+  // neither. false is the SSD1680Z panel, true the JD79661/EK79029 one their arduino-v1.2
+  // example targets. Pins and buttons are identical between them; the controller, its whole
+  // command set and the BUSY polarity are not, so the wrong setting here is a blank screen
+  // and a "Busy Timeout!" on serial.
+  constexpr bool PANEL_JD79661 = true;
+
+  // The JD79661 wants a 100ms reset pulse and has no software reset to fall back on. GxEPD2's
+  // default of 10 is enough for the SSD1680.
+  constexpr uint16_t EPD_RESET_DURATION_MS = PANEL_JD79661 ? 100 : 10;
 
   // EPD wiring (matches factory spi.h)
   constexpr int PIN_EPD_CS = 14;
@@ -87,3 +97,10 @@ namespace Config {
   constexpr float BATTERY_MIN_V = 3.2f;
   constexpr float BATTERY_MAX_V = 4.2f;
 }
+
+// The panel class is a type, so the selector cannot be a ternary like the ones above. Both
+// classes compile; the linker drops the unused one.
+using EpdDriver = typename std::conditional<Config::PANEL_JD79661,
+                                            GxEPD2_213_JD79661,
+                                            GxEPD2_213_GDEY0213B74>::type;
+using EpdDisplay = GxEPD2_BW<EpdDriver, EpdDriver::HEIGHT>;

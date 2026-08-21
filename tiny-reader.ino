@@ -11,7 +11,7 @@
 #include <esp_sleep.h>
 #include <esp_system.h>
 
-EpdDisplay display(EPD_DRIVER_CLASS(Config::PIN_EPD_CS, Config::PIN_EPD_DC, Config::PIN_EPD_RST, Config::PIN_EPD_BUSY));
+EpdDisplay display(EpdDriver(Config::PIN_EPD_CS, Config::PIN_EPD_DC, Config::PIN_EPD_RST, Config::PIN_EPD_BUSY));
 
 enum class ScreenId : uint8_t {
   Reader = 0,

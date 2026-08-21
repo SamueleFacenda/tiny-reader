@@ -101,7 +101,7 @@ size_t uiMeasurePage(const char* text, size_t len) {
 void uiInit(EpdDisplay& display) {
   // 0 leaves GxEPD2's _diag_enabled off: otherwise every busy wait prints a
   // timing line and buries the state and WiFi event logs.
-  display.init(0);
+  display.init(0, true, Config::EPD_RESET_DURATION_MS, false);
   display.setRotation(Config::DISPLAY_ROTATION);
   display.setTextColor(GxEPD_BLACK);
   display.setTextSize(Config::UI_TEXT_SIZE);
