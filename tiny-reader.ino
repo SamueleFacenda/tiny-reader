@@ -8,7 +8,6 @@
 #include "src/Ui.h"
 #include "src/WebPortal.h"
 
-#include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
 
@@ -39,7 +38,12 @@ static char pageBuffer[Config::READ_BUFFER_SIZE];
 static ButtonManager buttons;
 static ScreenId screen = ScreenId::MenuLibrary;
 static unsigned long lastActivity = 0;
-static unsigned long lastWifiRefresh = 0;
+// What the portal screen currently shows, so it can repaint on change instead of
+// on a timer. An e-ink paint costs 600-800ms of loop time and loads the panel
+// charge pump while the radio is transmitting, so a once-per-second uptime tick
+// was the most expensive thing on the screen.
+static uint32_t wifiShownMinutes = UINT32_MAX;
+static size_t wifiShownClients = SIZE_MAX;
 static uint16_t wifiPartialsSinceFull = 0;
 static uint8_t partialsSinceFull = 0;
 static std::vector<BookInfo> libraryBooks;
@@ -374,8 +378,10 @@ static void showScreen(ScreenId target) {
     }
     case ScreenId::WifiSettings:
       wifiPartialsSinceFull = 0;
+      wifiShownMinutes = webPortalUptimeMs() / 60000;
+      wifiShownClients = webPortalClientCount();
       uiDrawWifiSettings(display, webPortalActive(), webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS,
-                         webPortalUptimeMs(), false);
+                         webPortalUptimeMs(), webPortalClientCount(), false);
       break;
     case ScreenId::Error:
       break;
@@ -440,8 +446,8 @@ static uint64_t microsecondsUntilDeadline() {
 
 // Reading a page is idle time: rather than spinning at full clock until the
 // deep sleep timeout, the CPU sleeps and a button wakes it. RAM and execution
-// state survive, so the loop simply carries on. Light sleep GPIO wake is level
-// triggered, hence the low level and the check that nothing is held down.
+// state survive, so the loop simply carries on. ButtonManager owns the wake
+// arming because it collides with the press interrupt.
 static void maybeLightSleep() {
   if (webPortalActive() || screen == ScreenId::Error) {
     return;
@@ -454,29 +460,13 @@ static void maybeLightSleep() {
     return;
   }
 
-  const gpio_num_t wakePins[] = {
-    static_cast<gpio_num_t>(Config::PIN_OK),
-    static_cast<gpio_num_t>(Config::PIN_EXIT),
-    static_cast<gpio_num_t>(Config::PIN_PREV),
-    static_cast<gpio_num_t>(Config::PIN_NEXT),
-    static_cast<gpio_num_t>(Config::PIN_HOME)
-  };
-  for (gpio_num_t pin : wakePins) {
-    gpio_wakeup_enable(pin, GPIO_INTR_LOW_LEVEL);
-  }
-  esp_sleep_enable_gpio_wakeup();
+  buttons.prepareForLightSleep();
   esp_sleep_enable_timer_wakeup(us);
 
   Serial.flush();   // the UART would otherwise garble mid-line
   esp_light_sleep_start();
 
-  // gpio_wakeup_enable() rewrites the pin interrupt type to the level it wakes
-  // on, which would leave the press handler re-firing for as long as a button
-  // is held. Put the falling edge back and drop the wake registration.
-  for (gpio_num_t pin : wakePins) {
-    gpio_wakeup_disable(pin);
-    gpio_set_intr_type(pin, GPIO_INTR_NEGEDGE);
-  }
+  buttons.resumeAfterLightSleep();
 }
 
 static void maybeDeepSleep() {
@@ -495,9 +485,9 @@ static void maybeDeepSleep() {
     saveReaderPosition();
   }
   display.hibernate();
-  // Light sleep armed these; deep sleep wakes from ext0 alone.
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+  // Clear whatever light sleep armed, then wake from ext0 alone. Disabling the
+  // sources one by one logs an error for any that is already inactive.
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)Config::PIN_WAKE, 0);
   delay(50);
   esp_deep_sleep_start();
@@ -562,12 +552,20 @@ static void serviceWebPortal() {
   }
   webPortalHandle();
 
-  if (screen == ScreenId::WifiSettings && millis() - lastWifiRefresh >= 1000) {
-    lastWifiRefresh = millis();
-    const bool partial = (wifiPartialsSinceFull < Config::WIFI_SETTINGS_FULL_REFRESH_EVERY);
-    uiDrawWifiSettings(display, true, webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS,
-                       webPortalUptimeMs(), partial);
-    wifiPartialsSinceFull = partial ? (wifiPartialsSinceFull + 1) : 0;
+  // Repaint only when something on the screen actually changed. Anything else
+  // keeps the panel refreshing for the whole SERVER_TIMEOUT_MS window, which
+  // starves handleClient() and loads the rail while clients are associating.
+  if (screen == ScreenId::WifiSettings) {
+    const uint32_t minutes = webPortalUptimeMs() / 60000;
+    const size_t clients = webPortalClientCount();
+    if (minutes != wifiShownMinutes || clients != wifiShownClients) {
+      wifiShownMinutes = minutes;
+      wifiShownClients = clients;
+      const bool partial = (wifiPartialsSinceFull < Config::WIFI_SETTINGS_FULL_REFRESH_EVERY);
+      uiDrawWifiSettings(display, true, webPortalIp(), Config::WIFI_SSID, Config::WIFI_PASS,
+                         webPortalUptimeMs(), clients, partial);
+      wifiPartialsSinceFull = partial ? (wifiPartialsSinceFull + 1) : 0;
+    }
   }
 
   if (webPortalUptimeMs() > Config::SERVER_TIMEOUT_MS) {
@@ -678,9 +676,12 @@ static bool handleMenuOk() {
       showScreen(libraryBooks.empty() ? ScreenId::MenuWifi : ScreenId::ChooseBook);
       break;
     case ScreenId::MenuWifi:
-      if (!webPortalActive()) {
-        webPortalStart(onUploadComplete);
-        lastWifiRefresh = 0;
+      if (!webPortalActive() && !webPortalStart(onUploadComplete)) {
+        // The AP genuinely failed to come up: say so instead of showing an SSID
+        // and password that nothing is listening on.
+        Serial.println("Web portal failed to start");
+        showScreen(ScreenId::MenuWifi);
+        break;
       }
       showScreen(ScreenId::WifiSettings);
       break;

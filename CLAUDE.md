@@ -14,16 +14,22 @@ Everything comes from the Nix flake. `.envrc` is `use flake`, so direnv users al
 
 ```sh
 nix develop                                            # or rely on direnv
-FQBN=esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=no_ota
-arduino-cli compile --fqbn $FQBN                       # what CI runs
-arduino-cli upload -p /dev/ttyUSB0 --fqbn $FQBN
+arduino-cli compile --fqbn esp32:esp32:esp32s3          # what CI runs
+arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3
 openscad -o model.stl tiny_reader_2-13_case.scad        # what CI runs
 ```
 
-- Both board options matter. `FlashSize=8M` because the board has 8MB and the `esp32s3` default
-  is `4M`. `PartitionScheme=no_ota` does not pick the layout (`partitions.csv` overrides it), it
-  picks the size guard — and `no_ota` declares exactly the 2MB our `app0` really is. A roomier
-  scheme waves through a sketch that would overflow into the filesystem.
+- **No board options, deliberately.** Two files in the sketch root override the core instead,
+  because `platform.txt` prefers both over anything it would build itself: `partitions.csv` and
+  `bootloader.bin`. `app0` is sized to the stock `upload.maximum_size`, so the compile-time guard
+  stays exact without touching the board menu.
+- **`bootloader.bin` is why the 8MB layout boots, and it is generated, not committed.** The
+  bootloader the core builds declares 4MB, and since that image carries a SHA-256 digest esptool
+  refuses to correct the field while flashing — so a table spanning the board's real 8MB makes the
+  bootloader reset before printing a single line. The flake regenerates it from the same ELF with
+  `elf2image --flash_size 8MB` (`nix build .#bootloader`), and the devShell symlinks it in, so
+  `nix develop` or direnv is enough. **If the screen stays blank and the serial log is nothing but
+  repeating `rst:0x3 (RTC_SW_SYS_RST)` with no app output, this file is missing.**
 - Libraries live in `flake.nix` under `wrapArduinoCLI { libraries = ... }`, not vendored. Platform
   pinned to `2.0.10`.
 - CI only checks that the sketch compiles and the SCAD renders: no host build, no committed test.
@@ -41,8 +47,10 @@ dispatches to, and the sleep policy. The `src/` modules stay dumb:
   server, and the upload page's converter JS.
 - `FreeSerif9pt8b.h` — generated merged font, glyphs `0x20`–`0xFE` (latin-1). Do not hand-edit.
 - `partitions.csv` — overrides the `PartitionScheme` option (`platform.txt` prebuild hooks give a
-  sketch-folder CSV top priority). 2MB app, 5.88MB LittleFS, no OTA. **The data partition must
-  stay labelled `spiffs`** — that is the label `LittleFS.begin()` mounts.
+  sketch-folder CSV top priority). 1.25MB app, 6.62MB LittleFS, no OTA, 8MB total. **The data
+  partition must stay labelled `spiffs`** — that is the label `LittleFS.begin()` mounts. Resizing
+  it does not resize an existing filesystem: littlefs records its geometry in the superblock, so
+  reformat (hold OK on the error screen) or write a fresh `mklittlefs -b 4096 -p 256` image.
 
 ## Invariants
 
@@ -69,25 +77,70 @@ while the panel refreshes or a progress file is written. That handler must stay 
 press can arrive while the flash cache is disabled), must call nothing from the Arduino HAL
 (`digitalRead` is not IRAM-safe here), and debounces on `esp_timer_get_time()`; counters are
 consumed under `portENTER_CRITICAL`. Polling only maintains `isDown()` for the format screen.
-`consumeDirection()` returns net movement, so a burst costs one repaint.
+`consumeDirection()` returns net movement, so a burst costs one repaint. The handler watches
+**both** edges and counts a press only once the contact has been **open** for the debounce
+interval, tracked in `lastOpenUs`. Anything weaker double-counts: a window measured from the last
+counted press lets the release chatter through, and so does a retriggerable window, because the
+closing burst and the release burst are separated by however long the button was held. The level
+is read straight from `GPIO.in` since `digitalRead` is not IRAM-safe; that assumes every button
+pin is below GPIO32.
 
 **Refresh discipline.** The panel wants 1700ms full against 500ms partial. Turns are partial and
 `partialsSinceFull` forces a full draw every `PARTIAL_REFRESH_LIMIT` *paints*, not presses, so
 fast scrolling cannot skip past it. `showScreen()` always draws full. `Ok` in the read view is a
 manual deep clean for sun ghosting. Nothing refreshes before deep sleep on purpose: waking
-repaints fully anyway.
+repaints fully anyway. `display.init(0)`, not a bitrate: a nonzero one sets GxEPD2's
+`_diag_enabled` and every busy wait then prints a timing line, burying the state log. The sketch
+owns `Serial.begin()`.
 
-**Sleep.** Light sleep runs between turns with level-triggered GPIO wake, and has two traps:
-`gpio_wakeup_enable()` overwrites the pin's interrupt type, so the falling edge must be restored
-with `gpio_set_intr_type(pin, GPIO_INTR_NEGEDGE)` after every wake or a held button re-fires
-forever; and GPIO and timer wake must be disabled before `esp_deep_sleep_start()`, which wakes
-from `ext0` on `PIN_WAKE` alone. `millis()` keeps advancing across light sleep. Deep sleep after
+**The portal screen must not repaint on a timer.** `serviceWebPortal` compares the connected
+station count and the uptime *in whole minutes* against `wifiShownClients` / `wifiShownMinutes`
+and paints only on a change, which is why the on-screen uptime is minutes and not seconds. It
+used to tick once a second, and a paint costs 600-800ms of loop time, so the panel was refreshing
+for over half of the 15-minute `SERVER_TIMEOUT_MS` window. That starves `handleClient()` — the
+only thing draining the socket, since `WebServer::_parseForm` reads a whole upload inside one
+call — and keeps the panel charge pump loaded while clients are associating, on a LiPo where
+brownout is an observed failure mode. It is *not* a CPU problem: the WiFi driver and lwIP are
+pinned to core 0 (`CONFIG_ESP32_WIFI_TASK_PINNED_TO_CORE_0`,
+`CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0`) while `loop()` runs on core 1, and GxEPD2's busy wait
+yields via `vTaskDelay`. Do not move the server to its own task: that would share GxEPD2's SPI
+across threads with no locking and fix nothing.
+
+**Sleep.** Light sleep runs between page turns, and its wake collides with the press interrupt, so
+`ButtonManager::prepareForLightSleep` / `resumeAfterLightSleep` own the whole dance — do not arm
+GPIO wake from the sketch. Light sleep wakes on a *level*, and `gpio_wakeup_enable()` rewrites the
+pin's trigger type to it, so a handler left attached across the wake re-fires for as long as the
+button is held: it never reaches the code that would restore the edge, and the interrupt watchdog
+panics the core (`Interrupt wdt timeout on CPU1`). Hence: detach handlers before arming the wake,
+and on resume count a press for any pin still held — that falling edge happened with no handler
+attached, and since light sleep sits between every press, dropping it would drop them all. Before
+`esp_deep_sleep_start()`, clear everything with `esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL)`
+and then arm `ext0` on `PIN_WAKE`; disabling sources one at a time logs an error for each that is
+already inactive. `millis()` keeps advancing across light sleep. Deep sleep after
 `INACTIVITY_SLEEP_MS` hibernates the panel, and `sleepResumeMode` (`RTC_DATA_ATTR`) is the only
 thing telling `setup()` whether to reopen the book. Both are suppressed while the portal is up.
 
 **Handedness.** `Config::LEFT_HANDED` derives the logical pins and `DISPLAY_ROTATION`;
 `Input.cpp` reads only those, never `PIN_BTN_*`. Note `PIN_OK` maps to the pin named
 `PIN_BTN_HOME` and vice versa, and `PIN_WAKE` ignores the flag.
+
+**The access point is configured explicitly, and its failures are reported.** `WiFi.persistent(false)`
+first, because otherwise every start rewrites the config to NVS — a flash write, which disables
+the flash cache and stalls non-IRAM code on *both* cores exactly while the AP comes up. Channel
+and `max_connection` come from `Config`, and the returns of `softAP`, `softAPConfig` and
+`server.begin()` are all checked: `webPortalStart` used to hardcode `return true`, so a dead AP
+still displayed an SSID and password. A `DNSServer` resolving `*` plus an `onNotFound` redirect
+make it a captive portal, so a client's connectivity probe gets an answer instead of timing out.
+`onWifiEvent` logs join and leave; it takes `arduino_event_t*` because that is the only shape
+`removeEvent()` also accepts, and IDF 4.4 carries no reason code on the AP disconnect event, so
+the client's own supplicant log is the other half of any join diagnosis.
+
+**Uploads size themselves once.** `freeSpace()` reaches `lfs_fs_size()`, a full metadata
+traversal of the 6.62MB partition, so `handleUpload` measures `uploadBudget` at
+`UPLOAD_FILE_START` and decrements it per chunk. Calling it per chunk meant ~360 traversals per
+500KB book. `UPLOAD_FILE_ABORTED` must be handled or a truncated book is left in `/books`, and it
+is guarded by `uploadInProgress`: an abort during the headers arrives with `uploadPath` still
+naming the *previous* upload, which would otherwise be deleted.
 
 **Book text is normalized before it arrives.** The device stores upload bytes verbatim: the
 transliteration to latin-1, paragraph unwrap, hyphen rejoin and indent stripping all happen in

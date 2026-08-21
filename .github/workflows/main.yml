@@ -39,8 +39,16 @@ jobs:
         
       - uses: nicknovitski/nix-develop@v1
 
+      # The core's own bootloader declares 4MB; a table spanning the board's 8MB
+      # only boots with the one the flake regenerates. Fail loudly here rather
+      # than shipping something that boot-loops in silence.
+      - name: Build the 8MB bootloader
+        run: |
+          nix build .#bootloader -o bootloader.bin
+          python3 -c "b=open('bootloader.bin','rb').read(); assert b[3]>>4 == 3, 'bootloader does not declare 8MB'"
+
       - name: Build sketch
-        run: arduino-cli compile --verbose --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=no_ota
+        run: arduino-cli compile --verbose --fqbn esp32:esp32:esp32s3
         
       - name: Build enclosure
         run: openscad -o model.stl tiny_reader_2-13_case.scad

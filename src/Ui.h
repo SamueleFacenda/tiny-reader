@@ -37,6 +37,6 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial);
 size_t uiMeasurePage(const char* text, size_t len);
 void uiDrawLibrary(EpdDisplay& display, const std::vector<BookInfo>& books, int selectedIndex, int scrollIndex);
 void uiDrawWifiOff(EpdDisplay& display);
-void uiDrawWifiSettings(EpdDisplay& display, bool active, const String& ip, const String& ssid, const String& password, uint32_t uptimeMs, bool partial);
+void uiDrawWifiSettings(EpdDisplay& display, bool active, const String& ip, const String& ssid, const String& password, uint32_t uptimeMs, size_t clients, bool partial);
 void uiDrawInfo(EpdDisplay& display, const StorageStats& stats, float battV, int battPercent);
 void uiDrawError(EpdDisplay& display, const String& title, const String& message, const String& action);

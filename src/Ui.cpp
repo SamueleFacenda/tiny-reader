@@ -99,7 +99,9 @@ size_t uiMeasurePage(const char* text, size_t len) {
 }
 
 void uiInit(EpdDisplay& display) {
-  display.init(115200);
+  // 0 leaves GxEPD2's _diag_enabled off: otherwise every busy wait prints a
+  // timing line and buries the state and WiFi event logs.
+  display.init(0);
   display.setRotation(Config::DISPLAY_ROTATION);
   display.setTextColor(GxEPD_BLACK);
   display.setTextSize(Config::UI_TEXT_SIZE);
@@ -241,7 +243,7 @@ void uiDrawWifiOff(EpdDisplay& display) {
   display.powerOff();
 }
 
-void uiDrawWifiSettings(EpdDisplay& display, bool active, const String& ip, const String& ssid, const String& password, uint32_t uptimeMs, bool partial) {
+void uiDrawWifiSettings(EpdDisplay& display, bool active, const String& ip, const String& ssid, const String& password, uint32_t uptimeMs, size_t clients, bool partial) {
   const UiLayout& r = layout;
   if (partial) {
     display.setPartialWindow(r.contentX, r.contentY, r.contentW, r.contentH);
@@ -280,9 +282,16 @@ void uiDrawWifiSettings(EpdDisplay& display, bool active, const String& ip, cons
       y += layout.lineHeight;
 
       display.setCursor(layout.contentX, y);
+      display.print("Clients: ");
+      display.print(clients);
+      y += layout.lineHeight;
+
+      // Minutes, not seconds: the screen only repaints when this changes, and a
+      // seconds counter would mean an e-ink refresh every second.
+      display.setCursor(layout.contentX, y);
       display.print("Uptime: ");
-      display.print(uptimeMs / 1000);
-      display.print("s");
+      display.print(uptimeMs / 60000);
+      display.print("m");
       y += layout.lineHeight;
     }
 

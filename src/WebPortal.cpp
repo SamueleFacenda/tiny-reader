@@ -2,17 +2,25 @@
 
 #include <WiFi.h>
 #include <WebServer.h>
+#include <DNSServer.h>
 #include <LittleFS.h>
 
 #include "Storage.h"
 
 static WebServer server(80);
+static DNSServer dns;
 static bool active = false;
 static unsigned long startMs = 0;
 static UploadCompleteCallback uploadCallback = nullptr;
 static bool uploadFailed = false;
 static String uploadPath;
 static File uploadFile;
+// Space left for this upload, measured once at UPLOAD_FILE_START. Recomputing it
+// per chunk means a full littlefs metadata traversal every 1436 bytes.
+static size_t uploadBudget = 0;
+// Guards the abort path: uploadPath still names the *previous* upload until a
+// START arrives, and an abort during the headers must not delete that book.
+static bool uploadInProgress = false;
 
 static const char* uploadPage = R"rawliteral(
 <!DOCTYPE html>
@@ -135,7 +143,16 @@ static size_t freeSpace() {
 }
 
 static void handleRoot() {
-  server.send(200, "text/html", uploadPage);
+  // send_P streams straight from flash: send() would copy the whole page into a
+  // String first, and the heap is at its most fragmented right after WiFi came up.
+  server.send_P(200, "text/html", uploadPage);
+}
+
+// Anything else, including the connectivity probes a desktop OS fires on join,
+// goes to the upload page so the portal looks like a captive portal.
+static void handleNotFound() {
+  server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/");
+  server.send(302, "text/plain", "");
 }
 
 static void handleUpload() {
@@ -143,6 +160,7 @@ static void handleUpload() {
 
   if (upload.status == UPLOAD_FILE_START) {
     uploadFailed = false;
+    uploadInProgress = true;
     String safeName = storageSanitizeFilename(upload.filename);
     uploadPath = String(Config::BOOKS_DIR) + "/" + safeName;
     if (LittleFS.exists(uploadPath)) {
@@ -152,6 +170,7 @@ static void handleUpload() {
     if (!uploadFile) {
       uploadFailed = true;
     }
+    uploadBudget = freeSpace();
   } else if (upload.status == UPLOAD_FILE_WRITE) {
     if (uploadFailed) {
       return;
@@ -160,13 +179,14 @@ static void handleUpload() {
       uploadFailed = true;
       return;
     }
-    if (upload.currentSize > freeSpace()) {
+    if (upload.currentSize > uploadBudget) {
       Serial.println("Upload aborted: not enough space");
       uploadFailed = true;
       uploadFile.close();
       LittleFS.remove(uploadPath);
       return;
     }
+    uploadBudget -= upload.currentSize;
     if (uploadFile.write(upload.buf, upload.currentSize) != upload.currentSize) {
       Serial.println("Upload aborted: short write");
       uploadFailed = true;
@@ -175,6 +195,7 @@ static void handleUpload() {
       return;
     }
   } else if (upload.status == UPLOAD_FILE_END) {
+    uploadInProgress = false;
     if (uploadFile) {
       uploadFile.close();
     }
@@ -189,16 +210,99 @@ static void handleUpload() {
     if (uploadCallback) {
       uploadCallback(uploadPath, true);
     }
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    // WebServer sends no response on abort, so the only job here is to not leave
+    // a half-written book in the library.
+    if (!uploadInProgress) {
+      return;
+    }
+    uploadInProgress = false;
+    Serial.println("Upload aborted by client");
+    uploadFailed = true;
+    if (uploadFile) {
+      uploadFile.close();
+    }
+    if (uploadPath.length()) {
+      LittleFS.remove(uploadPath);
+    }
+    if (uploadCallback) {
+      uploadCallback(String(), false);
+    }
   }
 }
 
-static void startAccessPoint() {
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(Config::WIFI_SSID, Config::WIFI_PASS);
+// The association handshake runs entirely in the WiFi task on core 0, so these
+// events are the only view the sketch has of why a client failed to join. Pair
+// them with the supplicant log on the client side.
+// Takes arduino_event_t* rather than the (id, info) pair because that is the only
+// callback shape WiFi.removeEvent() can also match.
+static void onWifiEvent(arduino_event_t* event) {
+  if (!event) {
+    return;
+  }
+  switch (event->event_id) {
+    case ARDUINO_EVENT_WIFI_AP_START:
+      Serial.println("AP start");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STOP:
+      Serial.println("AP stop");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STACONNECTED: {
+      const uint8_t* mac = event->event_info.wifi_ap_staconnected.mac;
+      Serial.printf("AP client joined %02x:%02x:%02x:%02x:%02x:%02x aid=%u, now %u\n",
+                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+                    event->event_info.wifi_ap_staconnected.aid,
+                    WiFi.softAPgetStationNum());
+      break;
+    }
+    case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED: {
+      // IDF 4.4 carries no reason code on this event (added in 5.x), so the MAC
+      // and aid are all there is to correlate against the client's own log.
+      const uint8_t* mac = event->event_info.wifi_ap_stadisconnected.mac;
+      Serial.printf("AP client left %02x:%02x:%02x:%02x:%02x:%02x aid=%u, now %u\n",
+                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+                    event->event_info.wifi_ap_stadisconnected.aid,
+                    WiFi.softAPgetStationNum());
+      break;
+    }
+    case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
+      Serial.println("AP client got a DHCP lease");
+      break;
+    default:
+      break;
+  }
+}
+
+static bool startAccessPoint() {
+  // Without this every portal start rewrites the WiFi config to NVS: a flash
+  // write, which disables the flash cache and stalls non-IRAM code on both cores
+  // exactly while the AP is coming up.
+  WiFi.persistent(false);
+  WiFi.onEvent(onWifiEvent);
+  if (!WiFi.mode(WIFI_AP)) {
+    Serial.println("AP failed: mode");
+    return false;
+  }
+  const IPAddress gateway(192, 168, 4, 1);
+  const IPAddress subnet(255, 255, 255, 0);
+  if (!WiFi.softAPConfig(gateway, gateway, subnet)) {
+    Serial.println("AP failed: softAPConfig");
+    return false;
+  }
+  if (!WiFi.softAP(Config::WIFI_SSID, Config::WIFI_PASS, Config::WIFI_AP_CHANNEL,
+                   false, Config::WIFI_AP_MAX_CONN)) {
+    Serial.println("AP failed: softAP");
+    return false;
+  }
   delay(200);
+  Serial.printf("AP up on %s ch%u heap=%u maxalloc=%u\n",
+                WiFi.softAPIP().toString().c_str(), Config::WIFI_AP_CHANNEL,
+                ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  return true;
 }
 
 static void stopAccessPoint() {
+  WiFi.removeEvent(onWifiEvent);
   if (WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.softAPdisconnect(true);
     WiFi.disconnect(true, true);
@@ -212,10 +316,18 @@ bool webPortalStart(UploadCompleteCallback cb) {
     return true;
   }
   uploadCallback = cb;
-  startAccessPoint();
+  if (!startAccessPoint()) {
+    stopAccessPoint();
+    return false;
+  }
   server.on("/", handleRoot);
   server.on("/upload", HTTP_POST, []() {}, handleUpload);
+  server.onNotFound(handleNotFound);
   server.begin();
+  // Resolves every name to the portal, so the client stops waiting on DNS it is
+  // never going to get an answer for.
+  dns.setErrorReplyCode(DNSReplyCode::NoError);
+  dns.start(53, "*", WiFi.softAPIP());
   active = true;
   startMs = millis();
   Serial.println("Web portal started");
@@ -226,6 +338,7 @@ void webPortalStop() {
   if (!active) {
     return;
   }
+  dns.stop();
   server.stop();
   active = false;
   stopAccessPoint();
@@ -236,6 +349,7 @@ void webPortalHandle() {
   if (!active) {
     return;
   }
+  dns.processNextRequest();
   server.handleClient();
 }
 
@@ -248,6 +362,10 @@ unsigned long webPortalUptimeMs() {
     return 0;
   }
   return millis() - startMs;
+}
+
+size_t webPortalClientCount() {
+  return active ? WiFi.softAPgetStationNum() : 0;
 }
 
 String webPortalIp() {

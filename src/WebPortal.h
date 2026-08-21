@@ -10,5 +10,6 @@ bool webPortalStart(UploadCompleteCallback cb);
 void webPortalStop();
 void webPortalHandle();
 bool webPortalActive();
+size_t webPortalClientCount();
 unsigned long webPortalUptimeMs();
 String webPortalIp();

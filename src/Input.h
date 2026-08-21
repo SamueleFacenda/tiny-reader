@@ -30,6 +30,12 @@ class ButtonManager {
   bool anyDown() const;
   bool anyPending() const;   // does not consume, for the light sleep decision
 
+  // Light sleep can only be woken by a level, and arming one rewrites the pin's
+  // trigger type. These keep that from colliding with the press handler; see
+  // Input.cpp for what goes wrong without them.
+  void prepareForLightSleep();
+  void resumeAfterLightSleep();
+
  private:
   struct ButtonState {
     uint8_t pin = 0;

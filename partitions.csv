@@ -1,10 +1,15 @@
 # TinyReader layout for the 8MB flash on the CrowPanel ESP32-S3 2.13.
-# Overrides the selected PartitionScheme (see platform.txt prebuild hooks: a
-# partitions.csv in the sketch folder wins over the board menu option).
-# No OTA: the freed 1.25MB app slot goes to the book filesystem.
+# Overrides the PartitionScheme board option: platform.txt prefers a
+# partitions.csv found in the sketch folder. It pairs with the bootloader.bin
+# the flake generates, which is what allows a table this large to boot at all --
+# the bootloader the ESP32 core builds declares 4MB and cannot be corrected, so
+# without that file the device boot-loops with no output.
+# No OTA, so the freed app slot goes to books: 1.25MB app, 6.62MB library.
+# app0 is exactly the stock upload.maximum_size, so the compile-time size guard
+# matches the partition for real and no board options are needed.
 # The data partition must stay named "spiffs" -- LittleFS.begin() mounts that label.
 # Name,   Type, SubType, Offset,   Size,     Flags
 nvs,      data, nvs,     0x9000,   0x5000,
-app0,     app,  factory, 0x10000,  0x200000,
-spiffs,   data, spiffs,  0x210000, 0x5E0000,
+app0,     app,  factory, 0x10000,  0x140000,
+spiffs,   data, spiffs,  0x150000, 0x6A0000,
 coredump, data, coredump,0x7F0000, 0x10000,

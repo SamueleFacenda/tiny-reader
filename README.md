@@ -138,20 +138,23 @@ The scad source is available here or the rendered stl can be downloaded [directl
      ```
 3. Compile the sketch with Arduino CLI
      ```sh
-     arduino-cli compile --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=no_ota
+     arduino-cli compile --fqbn esp32:esp32:esp32s3
      ```
 4. Flash the firmware to the board (port may vary)
     ```sh
-    arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3:FlashSize=8M,PartitionScheme=no_ota --verbose 
+    arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3 --verbose 
     ```
 
 The flake provides the Arduino CLI, ESP32 board packages, Python serial support, and OpenSCAD.
 
-The repository ships a [partitions.csv](partitions.csv) that hands the book filesystem about 6MB
-of the board's 8MB flash, where the stock partition schemes stop at 1.5MB and never look past the
-first 4MB. That is why the FQBN pins `FlashSize=8M`. The first flash with this table invalidates
-any filesystem already on the device: the reader shows a LittleFS error on boot, hold the OK
-button for a couple of seconds to format it, then upload the books again.
+The repository ships a [partitions.csv](partitions.csv) that drops OTA and hands the whole 8MB
+flash to books, giving the library 6.62MB where the stock layout allows 1.44MB. That needs one
+extra piece: the bootloader the ESP32 core builds declares 4MB and cannot be corrected while
+flashing, so a table this large would not boot with it. The flake regenerates a correct one and
+the development shell drops it in as `bootloader.bin`, which is why `nix develop` (or direnv) is
+required before flashing rather than merely convenient. The first flash with this table
+invalidates any filesystem already on the device: the reader shows a LittleFS error on boot, hold
+the OK button for a couple of seconds to format it, then upload the books again.
 
 ### Assembly
 

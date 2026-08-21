@@ -45,7 +45,9 @@ namespace Config {
   constexpr uint8_t READER_TEXT_SIZE = 1;
   constexpr int16_t UI_MIN_MARGIN = 4;
   constexpr uint8_t PARTIAL_REFRESH_LIMIT = 10;
-  constexpr uint16_t WIFI_SETTINGS_FULL_REFRESH_EVERY = 30;
+  // Paints, not seconds: the portal screen now repaints only when something on it
+  // changes, so this counts minutes rather than seconds.
+  constexpr uint16_t WIFI_SETTINGS_FULL_REFRESH_EVERY = 6;
 
   // Timing
   constexpr uint32_t SERVER_TIMEOUT_MS = 15UL * 60UL * 1000UL;
@@ -62,6 +64,9 @@ namespace Config {
   // WiFi access point
   constexpr const char* WIFI_SSID = "TinyReader";
   constexpr const char* WIFI_PASS = "12345678";
+  // Pinned rather than left to the default, so a failed join is reproducible.
+  constexpr uint8_t WIFI_AP_CHANNEL = 1;
+  constexpr uint8_t WIFI_AP_MAX_CONN = 2;
 
   // Storage paths
   constexpr const char* BOOKS_DIR = "/books";
