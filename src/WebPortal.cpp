@@ -15,11 +15,11 @@ static UploadCompleteCallback uploadCallback = nullptr;
 static bool uploadFailed = false;
 static String uploadPath;
 static File uploadFile;
-// Space left for this upload, measured once at UPLOAD_FILE_START. Recomputing it
-// per chunk means a full littlefs metadata traversal every 1436 bytes.
+// Space left for this upload, measured once at UPLOAD_FILE_START: freeSpace() is a full
+// littlefs metadata traversal, far too slow to run per 1436-byte chunk.
 static size_t uploadBudget = 0;
-// Guards the abort path: uploadPath still names the *previous* upload until a
-// START arrives, and an abort during the headers must not delete that book.
+// Guards the abort path: until a START arrives uploadPath still names the *previous*
+// upload, which an abort during the headers must not delete.
 static bool uploadInProgress = false;
 
 static const char* uploadPage = R"rawliteral(
@@ -53,17 +53,16 @@ var EXTRA = {
   0x00AD:'',  0xFEFF:'',  0x00FF:'y'
 };
 
-// True for text that already holds one paragraph per line, so that reflowing it
-// a second time cannot collapse its paragraphs into one. Books are hard wrapped
-// at 60 to 80 columns, so a line past 120 characters can only be a paragraph
-// that some earlier pass already unwrapped.
+// True for text that already holds one paragraph per line, so reflowing it a second
+// time cannot collapse its paragraphs into one. Books are hard wrapped at 60 to 80
+// columns, so a line past 120 characters is an already-unwrapped paragraph.
 function alreadyReflowed(text) {
   if (/\n[ \t]*\n/.test(text)) return false;   // blank lines mean raw wrapping
   return text.split('\n').some(function (line) { return line.length > 120; });
 }
 
-// Reflow to one line per paragraph: the reader wraps text itself, and its screen
-// is far narrower than the ~70 columns books are usually hard wrapped at.
+// Reflow to one line per paragraph: the reader wraps text itself, on a screen far
+// narrower than the ~70 columns books are usually hard wrapped at.
 function reflow(text) {
   var unwrap = !alreadyReflowed(text);
   return text
@@ -143,13 +142,13 @@ static size_t freeSpace() {
 }
 
 static void handleRoot() {
-  // send_P streams straight from flash: send() would copy the whole page into a
-  // String first, and the heap is at its most fragmented right after WiFi came up.
+  // send_P streams straight from flash. send() would copy the whole page into a String
+  // first, and the heap is at its most fragmented right after WiFi comes up.
   server.send_P(200, "text/html", uploadPage);
 }
 
-// Anything else, including the connectivity probes a desktop OS fires on join,
-// goes to the upload page so the portal looks like a captive portal.
+// Everything else, including the connectivity probes a desktop OS fires on join, is
+// redirected to the upload page, which is what makes this a captive portal.
 static void handleNotFound() {
   server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/");
   server.send(302, "text/plain", "");
@@ -231,11 +230,10 @@ static void handleUpload() {
   }
 }
 
-// The association handshake runs entirely in the WiFi task on core 0, so these
-// events are the only view the sketch has of why a client failed to join. Pair
-// them with the supplicant log on the client side.
-// Takes arduino_event_t* rather than the (id, info) pair because that is the only
-// callback shape WiFi.removeEvent() can also match.
+// The association handshake runs in the WiFi task on core 0, so these events are the
+// sketch's only view of why a client failed to join; the client's own supplicant log is
+// the other half. Takes arduino_event_t* because that is the only callback shape
+// WiFi.removeEvent() also accepts.
 static void onWifiEvent(arduino_event_t* event) {
   if (!event) {
     return;
@@ -256,8 +254,8 @@ static void onWifiEvent(arduino_event_t* event) {
       break;
     }
     case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED: {
-      // IDF 4.4 carries no reason code on this event (added in 5.x), so the MAC
-      // and aid are all there is to correlate against the client's own log.
+      // IDF 4.4 carries no reason code on this event, so the MAC and aid are all there
+      // is to correlate against the client's own log.
       const uint8_t* mac = event->event_info.wifi_ap_stadisconnected.mac;
       Serial.printf("AP client left %02x:%02x:%02x:%02x:%02x:%02x aid=%u, now %u\n",
                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
@@ -274,9 +272,9 @@ static void onWifiEvent(arduino_event_t* event) {
 }
 
 static bool startAccessPoint() {
-  // Without this every portal start rewrites the WiFi config to NVS: a flash
-  // write, which disables the flash cache and stalls non-IRAM code on both cores
-  // exactly while the AP is coming up.
+  // Without this every portal start rewrites the WiFi config to NVS: a flash write,
+  // which disables the flash cache and stalls non-IRAM code on both cores exactly
+  // while the AP is coming up.
   WiFi.persistent(false);
   WiFi.onEvent(onWifiEvent);
   if (!WiFi.mode(WIFI_AP)) {
@@ -324,8 +322,8 @@ bool webPortalStart(UploadCompleteCallback cb) {
   server.on("/upload", HTTP_POST, []() {}, handleUpload);
   server.onNotFound(handleNotFound);
   server.begin();
-  // Resolves every name to the portal, so the client stops waiting on DNS it is
-  // never going to get an answer for.
+  // Resolves every name to the portal, so a client's connectivity probe gets an answer
+  // instead of timing out.
   dns.setErrorReplyCode(DNSReplyCode::NoError);
   dns.start(53, "*", WiFi.softAPIP());
   active = true;

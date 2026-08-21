@@ -17,8 +17,8 @@ struct StorageStats {
   size_t usedBytes = 0;
 };
 
-// Where the reader is in a book, plus the trail of pages it came through so
-// that going back keeps working across deep sleep and reboots.
+// Where the reader is in a book, plus the trail of pages it came through, so Prev keeps
+// working across deep sleep and reboots.
 struct ReadingPosition {
   uint32_t pos = 0;
   std::vector<uint32_t> history;

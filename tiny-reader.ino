@@ -38,10 +38,9 @@ static char pageBuffer[Config::READ_BUFFER_SIZE];
 static ButtonManager buttons;
 static ScreenId screen = ScreenId::MenuLibrary;
 static unsigned long lastActivity = 0;
-// What the portal screen currently shows, so it can repaint on change instead of
-// on a timer. An e-ink paint costs 600-800ms of loop time and loads the panel
-// charge pump while the radio is transmitting, so a once-per-second uptime tick
-// was the most expensive thing on the screen.
+// What the portal screen currently shows, so it repaints on a change rather than on a
+// timer: a paint costs 600-800ms of loop time, which starves handleClient() and loads
+// the panel charge pump while the radio is transmitting.
 static uint32_t wifiShownMinutes = UINT32_MAX;
 static size_t wifiShownClients = SIZE_MAX;
 static uint16_t wifiPartialsSinceFull = 0;
@@ -248,22 +247,18 @@ static void renderCurrentPage(bool allowPartial) {
                            ? static_cast<uint8_t>(min<uint32_t>(100, (reader.pagePos * 100UL) / reader.size))
                            : 0;
 
-  // Every PARTIAL_REFRESH_LIMIT turns one page is drawn fully instead of
-  // partially, which clears the ghosting the partial updates leave behind. With
-  // several queued presses collapsing into one paint, this counts paints rather
-  // than presses, so fast scrolling costs fewer full refreshes than it used to.
+  // A full draw every PARTIAL_REFRESH_LIMIT paints clears the ghosting the partial
+  // updates leave behind. Counted in paints, not presses, so fast scrolling cannot
+  // skip past it.
   const bool usePartial = allowPartial && (partialsSinceFull < Config::PARTIAL_REFRESH_LIMIT);
   uiDrawReader(display, view, usePartial);
-  
-  // Set nextPagePos based on how many bytes were actually rendered
-  // This ensures continuous scrolling with no text loss
+
+  // The bytes actually rendered are what the next page starts from, clamped to EOF.
   reader.nextPagePos = reader.pagePos + view.bytesConsumed;
-  
-  // Don't go past EOF
   if (reader.nextPagePos >= reader.size) {
     reader.nextPagePos = reader.size;
   }
-  
+
   if (usePartial) {
     partialsSinceFull++;
   } else {
@@ -277,9 +272,8 @@ static void renderCurrentPage(bool allowPartial) {
                 static_cast<unsigned>(ESP.getMaxAllocHeap()));
 }
 
-// Advances count pages but paints only the one we land on: the intermediate
-// boundaries are measured without touching the panel, which is what makes
-// holding the lever feel like scrolling instead of queueing refreshes.
+// Advances count pages but paints only the one we land on: the intermediate boundaries
+// are measured without touching the panel, so holding the lever scrolls.
 static void advancePages(uint8_t count) {
   if (!reader.file || count == 0) {
     return;
@@ -321,8 +315,8 @@ static void goBackPages(uint8_t count) {
   renderCurrentPage(true);
 }
 
-// Sunlight makes accumulated ghosting obvious. A white flash plus a full
-// re-render is the strongest cleanup the panel offers from firmware.
+// A white flash plus a full re-render: the strongest cleanup for the sun ghosting the
+// panel offers from firmware.
 static void deepClean() {
   Serial.println("Deep clean refresh");
   display.clearScreen();
@@ -444,10 +438,10 @@ static uint64_t microsecondsUntilDeadline() {
   return static_cast<uint64_t>(Config::INACTIVITY_SLEEP_MS - elapsed) * 1000ULL;
 }
 
-// Reading a page is idle time: rather than spinning at full clock until the
-// deep sleep timeout, the CPU sleeps and a button wakes it. RAM and execution
-// state survive, so the loop simply carries on. ButtonManager owns the wake
-// arming because it collides with the press interrupt.
+// Reading a page is idle time, so the CPU sleeps until a button wakes it instead of
+// spinning until the deep sleep timeout. RAM and execution state survive, so the loop
+// carries on. ButtonManager owns the wake arming, which collides with the press
+// interrupt.
 static void maybeLightSleep() {
   if (webPortalActive() || screen == ScreenId::Error) {
     return;
@@ -485,8 +479,8 @@ static void maybeDeepSleep() {
     saveReaderPosition();
   }
   display.hibernate();
-  // Clear whatever light sleep armed, then wake from ext0 alone. Disabling the
-  // sources one by one logs an error for any that is already inactive.
+  // Clear whatever light sleep armed, then wake from ext0 alone. Disabling the sources
+  // one at a time logs an error for each that is already inactive.
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)Config::PIN_WAKE, 0);
   delay(50);
@@ -535,8 +529,7 @@ void setup() {
   lastActivity = millis();
 }
 
-// Net movement of a latched direction pair, so a burst of presses costs one
-// repaint instead of one per press.
+// Net movement of the latched direction pair, so a burst of presses costs one repaint.
 static int consumeDirection() {
   const int forward = buttons.consumePresses(ButtonId::Next);
   const int backward = buttons.consumePresses(ButtonId::Prev);
@@ -552,9 +545,8 @@ static void serviceWebPortal() {
   }
   webPortalHandle();
 
-  // Repaint only when something on the screen actually changed. Anything else
-  // keeps the panel refreshing for the whole SERVER_TIMEOUT_MS window, which
-  // starves handleClient() and loads the rail while clients are associating.
+  // Repaint only on a change: refreshing through the SERVER_TIMEOUT_MS window would
+  // starve handleClient() and load the rail while clients are associating.
   if (screen == ScreenId::WifiSettings) {
     const uint32_t minutes = webPortalUptimeMs() / 60000;
     const size_t clients = webPortalClientCount();
@@ -576,8 +568,7 @@ static void serviceWebPortal() {
   }
 }
 
-// Exit leaves the current screen: back to the book if one is open, otherwise to
-// somewhere useful.
+// Exit leaves the current screen: back to the book if one is open, to the menu if not.
 static bool handleExit() {
   if (!buttons.consumeShortPress(ButtonId::Exit)) {
     return false;
@@ -663,8 +654,8 @@ static bool handleChooseBookInput() {
   return acted;
 }
 
-// Ok means something different on every menu: enter the library, start the
-// portal, or just redraw what is on screen.
+// Ok means something different on every menu: enter the library, start the portal, or
+// redraw what is on screen.
 static bool handleMenuOk() {
   if (!buttons.consumeShortPress(ButtonId::Ok)) {
     return false;
@@ -677,8 +668,8 @@ static bool handleMenuOk() {
       break;
     case ScreenId::MenuWifi:
       if (!webPortalActive() && !webPortalStart(onUploadComplete)) {
-        // The AP genuinely failed to come up: say so instead of showing an SSID
-        // and password that nothing is listening on.
+        // The AP failed to come up: say so rather than show credentials that nothing
+        // is listening on.
         Serial.println("Web portal failed to start");
         showScreen(ScreenId::MenuWifi);
         break;

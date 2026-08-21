@@ -12,17 +12,15 @@ enum class ButtonId : uint8_t {
   Count = 5
 };
 
-// Presses are latched by a pin interrupt rather than by polling, so none are
-// lost while the panel is refreshing (500ms partial, 1700ms full) or while a
-// progress file is being written. Polling remains only for the held state.
+// Presses are latched by a pin interrupt, so none are lost while the panel refreshes
+// or a progress file is written. Polling only maintains the held state.
 class ButtonManager {
  public:
   void begin();
   void update();
 
-  // Number of presses since the last call, cleared by reading. Several presses
-  // arriving during one refresh let the reader skip pages instead of queueing
-  // a refresh per press.
+  // Presses since the last call, cleared by reading. A burst arriving during one
+  // refresh lets the reader skip pages instead of repainting per press.
   uint8_t consumePresses(ButtonId id);
   bool consumeShortPress(ButtonId id);
 
@@ -30,9 +28,8 @@ class ButtonManager {
   bool anyRawDown() const;   // straight from the pins, for the light sleep decision
   bool anyPending() const;   // does not consume, for the light sleep decision
 
-  // Light sleep can only be woken by a level, and arming one rewrites the pin's
-  // trigger type. These keep that from colliding with the press handler; see
-  // Input.cpp for what goes wrong without them.
+  // Light sleep wakes on a level, and arming one rewrites the pin's trigger type.
+  // These own that dance so it cannot collide with the press handler.
   void prepareForLightSleep();
   void resumeAfterLightSleep();
 

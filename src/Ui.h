@@ -25,15 +25,15 @@ struct ReaderView {
   const char* text = nullptr; // raw unwrapped text to render, not owned
   size_t textLen = 0;
   uint8_t progressPercent = 0;
-  size_t bytesConsumed = 0;  // set by uiDrawReader: how many bytes of text were actually rendered
+  size_t bytesConsumed = 0;   // set by uiDrawReader: bytes of text actually rendered
 };
 
 void uiInit(EpdDisplay& display);
 const UiLayout& uiLayout();
 
 void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial);
-// How many bytes the next page would consume, without drawing anything. Pure CPU:
-// it reads the font metrics only, so several pages can be skipped on one refresh.
+// How many bytes the next page would consume, without drawing anything: font metrics
+// only, so several pages can be skipped on one refresh.
 size_t uiMeasurePage(const char* text, size_t len);
 void uiDrawLibrary(EpdDisplay& display, const std::vector<BookInfo>& books, int selectedIndex, int scrollIndex);
 void uiDrawWifiOff(EpdDisplay& display);

@@ -1,9 +1,9 @@
 // GxEPD2 panel class for the JD79661 / EK79029 revision of the Elecrow CrowPanel 2.13" module.
-// See GxEPD2_213_JD79661.h for the three reference sources this is assembled from.
+// See the header for the reference sources this is assembled from.
 //
-// The image path below is GxEPD2's epd/GxEPD2_154_M09 (JD79653A, b/w) unchanged except for two
-// controller differences: the previous-frame plane is 0x10 rather than 0x26, and there is no
-// 0x91 / 0x92 partial-in / partial-out pair, the 0x83 window stands on its own.
+// The image path is GxEPD2's epd/GxEPD2_154_M09 (JD79653A, b/w) with two controller
+// differences: the previous-frame plane is 0x10 rather than 0x26, and the 0x83 window stands
+// on its own, with no 0x91 / 0x92 partial-in / partial-out pair.
 
 #include "GxEPD2_213_JD79661.h"
 
@@ -294,8 +294,8 @@ void GxEPD2_213_JD79661::hibernate()
   }
 }
 
-// JD79661 addresses a partial window with 0x83, not with the UC8151 0x90 / 0x91 / 0x92 trio that
-// the JD79653A sibling uses. Byte layout and the trailing mode flag are from GxEPD2's own JD79661
+// The JD79661 addresses a partial window with 0x83, not the UC8151 0x90 / 0x91 / 0x92 trio the
+// JD79653A sibling uses. Byte layout and trailing mode flag are from GxEPD2's own JD79661
 // driver, epd4c/GxEPD2_213c_GDEY0213F51.
 void GxEPD2_213_JD79661::_setPartialRamArea(uint16_t x, uint16_t y, uint16_t w, uint16_t h, bool partial_mode)
 {
@@ -374,12 +374,11 @@ void GxEPD2_213_JD79661::_InitDisplay()
   if (_hibernating) _reset();
   // Verbatim from Elecrow's EPD_Init(), example/arduino-v1.2/main/EPD_Init.cpp.
   _writeCommand(0x00); // PSR, panel setting
-  // bit3 gate scan direction, bit2 source shift direction; 0xF3 / 0xF7 / 0xFB / 0xFF are the four
-  // combinations. Elecrow's own value, kept deliberately. The panel does render mirrored left to
-  // right this way, and flipping bit3 here does correct it — but only for full paints: the gate
-  // origin moves and GxEPD2's partial windows keep addressing the old end, which corrupts every
-  // partial refresh. The mirror is undone by GxEPD2::GDE0213B1 / _reverse instead, see the panel
-  // attribute in the header. Do not flip this to un-mirror the display.
+  // bit3 gate scan direction, bit2 source shift direction; 0xF3 / 0xF7 / 0xFB / 0xFF are the
+  // four combinations. Elecrow's value, kept deliberately: the panel renders mirrored left to
+  // right this way, and the mirror is undone by GxEPD2::GDE0213B1 / _reverse (see the header).
+  // Do not flip bit3 to un-mirror it — that moves the gate origin while GxEPD2's partial
+  // windows keep addressing the old end, corrupting every partial refresh.
   _writeData(0xF7);
   _writeData(0x8A);
   _writeCommand(0x01); // PWR, power setting
@@ -437,12 +436,11 @@ void GxEPD2_213_JD79661::_Init_Part()
 }
 
 // The waveform download belongs here rather than in _Init_*, so the 0x22 / 0x23 alternation
-// advances once per refresh, which is the point of it.
+// advances once per refresh.
 //
-// 0x17 with 0xA5 is what Elecrow uses on this module. It is likely an auto sequence (power on,
-// refresh, power off) rather than a bare display refresh, hence clearing _power_is_on afterwards:
-// a redundant 0x04 on the next refresh is harmless, a missing one is a dead refresh. If 0x17 turns
-// out not to refresh at all, 0x12 is the plain display-refresh opcode on this controller family.
+// 0x17 / 0xA5 is Elecrow's refresh opcode for this module, and is likely an auto sequence
+// (power on, refresh, power off), hence clearing _power_is_on afterwards: a redundant 0x04 on
+// the next refresh is harmless, a missing one is a dead refresh.
 void GxEPD2_213_JD79661::_Update_Full()
 {
   _writeLut(false);
@@ -462,8 +460,8 @@ void GxEPD2_213_JD79661::_Update_Part()
 }
 
 // Waveform tables, copied byte for byte from Elecrow's EPD_Init.cpp. GC is the full-refresh
-// waveform, DU the partial one (their comment labels it 300ms). 56 bytes each, of which only
-// the first 8 are non-zero; the tail is sent anyway, as the controller expects 56.
+// waveform, DU the partial one. 56 bytes each, of which only the first 8 are non-zero; the
+// tail is sent anyway, as the controller expects 56.
 
 const unsigned char GxEPD2_213_JD79661::lut_20_gc[] PROGMEM =
 {

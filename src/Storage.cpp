@@ -165,7 +165,7 @@ ReadingPosition storageLoadPosition(const String& path, uint32_t bookSize) {
   }
 
   if (!record.startsWith(kRecordPrefix)) {
-    // Records written before history was persisted: a bare byte offset.
+    // The older record format: a bare byte offset, no history.
     position.pos = static_cast<uint32_t>(record.toInt());
     dropInvalid(position, bookSize);
     return position;
@@ -218,9 +218,9 @@ bool storageSavePosition(const String& path, uint32_t pos, const std::vector<uin
     return false;
   }
 
-  // Rename over the live record instead of truncating it: littlefs swaps the
-  // two atomically, so losing power here leaves either the previous record or
-  // the new one, never an empty file that would reopen the book at page one.
+  // Rename over the live record rather than truncate it: littlefs swaps the two
+  // atomically, so losing power here leaves one whole record or the other, never an
+  // empty file that would reopen the book at page one.
   if (LittleFS.rename(tempPath, finalPath)) {
     return true;
   }

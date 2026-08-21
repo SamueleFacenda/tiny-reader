@@ -3,14 +3,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Word wrapping for the reading view, kept free of Arduino and GxEPD2 so that the
-// page boundaries can be computed without touching the panel (needed to skip
-// several pages ahead on one refresh) and so that it can be compiled on a host.
+// Word wrapping for the reading view, free of Arduino and GxEPD2 so page boundaries can
+// be computed without touching the panel, and so this compiles on a host.
 namespace TextWrap {
 
-// One visual line, as a range into the source text. No member initializers: the
-// sketch is built as gnu++11, where those would stop it being an aggregate and
-// break Line{start, len}.
+// One visual line, as a range into the source text. No member initializers: the sketch
+// is built as gnu++11, where those stop this being an aggregate and break Line{start, len}.
 struct Line {
   size_t start;
   size_t len;
@@ -20,17 +18,15 @@ inline bool isBlank(char c) {
   return c == ' ' || c == '\t' || c == '\r';
 }
 
-// Lays out at most maxLines lines of at most maxWidth pixels.
+// Lays out at most maxLines lines of at most maxWidth pixels, returning the bytes
+// consumed, which the caller turns into the next page position.
 //
-// charWidth(c) returns how far the renderer advances for one byte, and must
-// return 0 for bytes it does not draw, so that the measurement matches what
-// ends up on the screen. emit(line, index) receives every visual line, and may
-// do nothing when only the page length is wanted.
+// charWidth(c) must return 0 for bytes the renderer does not draw, so the measurement
+// matches the screen. emit(line, index) receives every visual line and may do nothing
+// when only the page length is wanted.
 //
-// Returns how many bytes were consumed, which is what the caller turns into the
-// next page position. The result is never 0 for a non-empty text: a word wider
-// than the line is accepted anyway (clipped, as before) rather than leaving the
-// reader stuck on a page that never advances.
+// The result is never 0 for non-empty text: a word wider than the line is accepted and
+// clipped rather than leaving the reader on a page that never advances.
 template <typename CharWidth, typename Emit>
 size_t wrapPage(const char* text, size_t len, int16_t maxWidth, int16_t maxLines,
                 CharWidth charWidth, Emit emit) {
@@ -104,8 +100,8 @@ size_t wrapPage(const char* text, size_t len, int16_t maxWidth, int16_t maxLines
     consumed = cursor;
   }
 
-  // Trailing blanks that were skipped without a line being emitted still have to
-  // count, or the reader would stop advancing on a page made only of whitespace.
+  // Trailing blanks skipped without emitting a line still count, or the reader stops
+  // advancing on a page made only of whitespace.
   if (consumed < pos) {
     consumed = pos;
   }

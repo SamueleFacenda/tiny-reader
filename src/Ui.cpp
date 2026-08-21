@@ -73,10 +73,10 @@ static String trimToWidth(const String& text, int16_t maxChars) {
   return text.substring(0, maxChars - 3) + "...";
 }
 
-// How far the renderer advances for one byte of reader text. Bytes outside the
-// font range are skipped by Adafruit_GFX without moving the cursor, so they must
-// measure as 0 for the layout to match what actually lands on the screen.
-// Flash is memory mapped on the ESP32, so the tables are read directly.
+// How far the renderer advances for one byte of reader text. Bytes outside the font
+// range are skipped by Adafruit_GFX without moving the cursor, so they measure as 0 to
+// keep the layout matching the screen. Flash is memory mapped, so the tables are read
+// directly.
 static int16_t readerCharWidth(unsigned char c) {
   if (c < FreeSerif9pt8b.first || c > FreeSerif9pt8b.last) {
     return 0;
@@ -99,8 +99,8 @@ size_t uiMeasurePage(const char* text, size_t len) {
 }
 
 void uiInit(EpdDisplay& display) {
-  // 0 leaves GxEPD2's _diag_enabled off: otherwise every busy wait prints a
-  // timing line and buries the state and WiFi event logs.
+  // The leading 0 leaves GxEPD2's _diag_enabled off: a nonzero one makes every busy
+  // wait print a timing line, burying the state and WiFi logs.
   display.init(0, true, Config::EPD_RESET_DURATION_MS, false);
   display.setRotation(Config::DISPLAY_ROTATION);
   display.setTextColor(GxEPD_BLACK);
@@ -118,20 +118,20 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
   display.setTextSize(Config::READER_TEXT_SIZE);
   display.setFont(&FreeSerif9pt8b);
   display.setTextWrap(false);
-  
+
   int16_t sampleX1 = 0;
   int16_t sampleY1 = 0;
   uint16_t sampleW = 0;
   uint16_t sampleH = 0;
   display.getTextBounds("jAg", 0, 0, &sampleX1, &sampleY1, &sampleW, &sampleH);
   int16_t lineBaselineY = r.contentY + 2 - sampleY1;
-  
+
   if (partial) {
     display.setPartialWindow(r.contentX, r.contentY, r.contentW, r.height - r.contentY);
   } else {
     display.setFullWindow();
   }
-  
+
   const char* text = view.text;
   const size_t textLen = (text != nullptr) ? view.textLen : 0;
   size_t bytesRendered = 0;
@@ -158,7 +158,6 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
         }
       });
 
-    // Render Progress Bar
     int16_t barY = r.height - 1;
     int16_t barW = map(view.progressPercent, 0, 100, 0, r.contentW);
     display.fillRect(r.contentX, barY, r.contentW, 1, GxEPD_WHITE);
@@ -166,7 +165,6 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
 
   } while (display.nextPage());
 
-  // Report consumed bytes
   const_cast<ReaderView&>(view).bytesConsumed = bytesRendered;
 
   display.setTextSize(Config::UI_TEXT_SIZE);
@@ -201,11 +199,10 @@ void uiDrawLibrary(EpdDisplay& display, const std::vector<BookInfo>& books, int 
         }
         int16_t lineY = startY + i * layout.lineHeight;
         bool active = (bookIndex == selectedIndex);
-        // compute font height and center text vertically
         int16_t fontH = max<int16_t>(8 * Config::UI_TEXT_SIZE, 8);
         int16_t textTop = lineY + (layout.lineHeight - fontH) / 2;
         if (active) {
-          // selection box should tightly wrap the text with small vertical padding
+          // the selection box wraps the text tightly, with a pixel of padding
           int16_t boxY = textTop - 1;
           int16_t boxH = fontH + 2;
           display.fillRect(layout.contentX, boxY, layout.contentW, boxH, GxEPD_BLACK);
@@ -286,8 +283,8 @@ void uiDrawWifiSettings(EpdDisplay& display, bool active, const String& ip, cons
       display.print(clients);
       y += layout.lineHeight;
 
-      // Minutes, not seconds: the screen only repaints when this changes, and a
-      // seconds counter would mean an e-ink refresh every second.
+      // Minutes, not seconds: this value is what the screen repaints on, and a seconds
+      // counter would mean an e-ink refresh every second.
       display.setCursor(layout.contentX, y);
       display.print("Uptime: ");
       display.print(uptimeMs / 60000);
