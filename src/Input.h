@@ -27,7 +27,7 @@ class ButtonManager {
   bool consumeShortPress(ButtonId id);
 
   bool isDown(ButtonId id) const;
-  bool anyDown() const;
+  bool anyRawDown() const;   // straight from the pins, for the light sleep decision
   bool anyPending() const;   // does not consume, for the light sleep decision
 
   // Light sleep can only be woken by a level, and arming one rewrites the pin's

@@ -81,12 +81,20 @@ press can arrive while the flash cache is disabled), must call nothing from the 
 (`digitalRead` is not IRAM-safe here), and debounces on `esp_timer_get_time()`; counters are
 consumed under `portENTER_CRITICAL`. Polling only maintains `isDown()` for the format screen.
 `consumeDirection()` returns net movement, so a burst costs one repaint. The handler watches
-**both** edges and counts a press only once the contact has been **open** for the debounce
-interval, tracked in `lastOpenUs`. Anything weaker double-counts: a window measured from the last
-counted press lets the release chatter through, and so does a retriggerable window, because the
-closing burst and the release burst are separated by however long the button was held. The level
-is read straight from `GPIO.in` since `digitalRead` is not IRAM-safe; that assumes every button
-pin is below GPIO32.
+**both** edges and counts a press only on a transition from **open** to closed where the open
+period lasted the debounce interval — `lastOpenUs` for the interval, `contactClosed` for the
+transition, and **both halves are load-bearing**. Dropping `lastOpenUs` double-counts the closing
+chatter, whose bounces legitimately reopen the contact; so does a window measured from the last
+counted press, which lets the release chatter through, and so does a retriggerable window, because
+the closing burst and the release burst are separated by however long the button was held.
+Dropping `contactClosed` double-counts a low level seen while the button is *already* held: the
+handler reads the **level**, not the edge that fired it, since `attachInterrupt` gives it no
+direction, and the two disagree exactly when it matters — the GPIO peripheral latches one
+interrupt for coalesced edges, and a handler that fell out of IRAM is masked for the length of a
+flash write, which happens on every page turn. The dispatch after a release burst then reads low,
+and nothing refreshes `lastOpenUs` during a hold. Under-counting is the safe direction here; the
+guard must never manufacture a press. The level is read straight from `GPIO.in` since
+`digitalRead` is not IRAM-safe; that assumes every button pin is below GPIO32.
 
 **Display module revisions.** Elecrow ships two different panels under the one 2.13" part number
 and documents neither: an SSD1680Z one and a JD79661/EK79029 one, listed side by side as `Driver
@@ -142,8 +150,15 @@ GPIO wake from the sketch. Light sleep wakes on a *level*, and `gpio_wakeup_enab
 pin's trigger type to it, so a handler left attached across the wake re-fires for as long as the
 button is held: it never reaches the code that would restore the edge, and the interrupt watchdog
 panics the core (`Interrupt wdt timeout on CPU1`). Hence: detach handlers before arming the wake,
-and on resume count a press for any pin still held — that falling edge happened with no handler
-attached, and since light sleep sits between every press, dropping it would drop them all. Before
+and on resume count a press for a pin still held — that falling edge happened with no handler
+attached, and since light sleep sits between every press, dropping it would drop them all. Only
+an open-to-closed transition though, `!contactClosed`: the wake is by level, so a button still
+held from the press just handled satisfies it the moment sleep is armed, and counting every low
+pin turned one long press into two page turns. `prepareForLightSleep` clears `contactClosed` for
+any pin reading high first, since that is the last look at the pins before the handlers come off.
+For the same reason the decision not to sleep at all reads the pins directly,
+`anyRawDown()` and not `isDown()`: `update()` advances `lastDown` once per loop and skips the
+iteration on which the level changed, so at the end of a page turn it still says nothing is held. Before
 `esp_deep_sleep_start()`, clear everything with `esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL)`
 and then arm `ext0` on `PIN_WAKE`; disabling sources one at a time logs an error for each that is
 already inactive. `millis()` keeps advancing across light sleep. Deep sleep after

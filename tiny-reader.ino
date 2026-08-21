@@ -452,7 +452,7 @@ static void maybeLightSleep() {
   if (webPortalActive() || screen == ScreenId::Error) {
     return;
   }
-  if (buttons.anyPending() || buttons.anyDown()) {
+  if (buttons.anyPending() || buttons.anyRawDown()) {
     return;
   }
   const uint64_t us = microsecondsUntilDeadline();

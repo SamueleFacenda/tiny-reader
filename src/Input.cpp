@@ -25,6 +25,7 @@ static uint8_t pinFor(ButtonId id) {
 static const uint8_t kButtonCount = static_cast<uint8_t>(ButtonId::Count);
 static volatile uint32_t pressCounts[kButtonCount];
 static volatile int64_t lastOpenUs[kButtonCount];   // last time the contact was seen open
+static volatile bool contactClosed[kButtonCount];   // whether the contact is believed closed
 static uint8_t buttonPins[kButtonCount];
 static portMUX_TYPE pressMux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -40,11 +41,26 @@ static inline bool ARDUINO_ISR_ATTR pinIsLow(uint8_t pin) {
   return ((GPIO.in >> pin) & 0x1) == 0;
 }
 
-// Both edges are watched, and a press counts only once the contact has been open
-// for the debounce interval. That is what makes one click exactly one press: the
-// chatter while the contact closes never satisfies it, nor does the separate
-// burst it makes on release however long the button was held in between, and a
-// button held steady produces no edges at all.
+// Both edges are watched, and a press counts only on a transition from open to
+// closed, where the open period lasted at least the debounce interval. That is
+// what makes one click exactly one press, and both halves of the guard carry
+// their own case:
+//
+//   lastOpenUs rejects the chatter while the contact closes. Those bounces
+//   legitimately reopen the contact, so the state alone would count each
+//   re-close.
+//
+//   contactClosed rejects a low level observed while the contact is already
+//   held. This handler reads the *level* rather than the edge that fired it,
+//   because attachInterrupt gives it no direction, and the two do not always
+//   agree: the GPIO peripheral latches a single interrupt for edges that
+//   coalesce, and a handler resident in flash is masked for the length of a
+//   flash write -- a progress file is saved on every page turn. So the one
+//   dispatch that follows a release burst can read the pin as low, and since
+//   nothing refreshes lastOpenUs during a hold, a timestamp guard on its own
+//   would count that as a press.
+//
+// A button held steady produces no edges at all.
 static void ARDUINO_ISR_ATTR onButtonEdge(void* arg) {
   const uint32_t index = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(arg));
   const int64_t now = esp_timer_get_time();
@@ -52,10 +68,12 @@ static void ARDUINO_ISR_ATTR onButtonEdge(void* arg) {
 
   portENTER_CRITICAL_ISR(&pressMux);
   if (closed) {
-    if (now - lastOpenUs[index] >= kDebounceUs) {
+    if (!contactClosed[index] && now - lastOpenUs[index] >= kDebounceUs) {
       pressCounts[index]++;
     }
+    contactClosed[index] = true;
   } else {
+    contactClosed[index] = false;
     lastOpenUs[index] = now;
   }
   portEXIT_CRITICAL_ISR(&pressMux);
@@ -85,6 +103,9 @@ void ButtonManager::begin() {
     lastOpenUs[i] = 0;
     buttonPins[i] = st.pin;
     pinMode(st.pin, Config::BUTTON_PULLUP ? INPUT_PULLUP : INPUT);
+    // Seeded from the level, not to false: a button held across boot would
+    // otherwise have the first bounce of its release counted as a press.
+    contactClosed[i] = (digitalRead(st.pin) == LOW);
     // Buttons pull the pin low, so a press is a falling edge.
     attachPress(i, st.pin);
   }
@@ -97,7 +118,17 @@ void ButtonManager::begin() {
 // interrupt watchdog eventually panics the core. Detaching first makes the wake
 // silent.
 void ButtonManager::prepareForLightSleep() {
+  const int64_t now = esp_timer_get_time();
   for (uint8_t i = 0; i < kButtonCount; ++i) {
+    // Last chance to observe the pin before the handlers come off. Without this
+    // a contactClosed left set by a press whose release was never seen would
+    // swallow the next real press on resume.
+    if (digitalRead(states[i].pin) != LOW) {
+      portENTER_CRITICAL(&pressMux);
+      contactClosed[i] = false;
+      lastOpenUs[i] = now;
+      portEXIT_CRITICAL(&pressMux);
+    }
     detachInterrupt(states[i].pin);
     gpio_wakeup_enable(static_cast<gpio_num_t>(states[i].pin), GPIO_INTR_LOW_LEVEL);
   }
@@ -116,9 +147,15 @@ void ButtonManager::resumeAfterLightSleep() {
     // it here or the press is lost. Light sleep sits between every press, so
     // losing it would mean losing all of them. Stamping the debounce window also
     // swallows any level interrupt still pending when the handler returns.
-    if (wokeOnButton && digitalRead(st.pin) == LOW) {
+    //
+    // contactClosed is what keeps this from inventing presses. The wake is by
+    // level, so a button still held from the press we just handled satisfies it
+    // the instant sleep is armed, and counting every low pin here turned one
+    // long press into a second page turn.
+    if (wokeOnButton && digitalRead(st.pin) == LOW && !contactClosed[i]) {
       portENTER_CRITICAL(&pressMux);
       pressCounts[i]++;
+      contactClosed[i] = true;
       lastOpenUs[i] = now;   // so the still-closed contact cannot count twice
       portEXIT_CRITICAL(&pressMux);
     }
@@ -160,9 +197,13 @@ bool ButtonManager::isDown(ButtonId id) const {
   return state(id).lastDown;
 }
 
-bool ButtonManager::anyDown() const {
+// Reads the pins rather than the polled state, because update() only advances
+// lastDown once per loop and skips the iteration on which the level changed. The
+// light sleep decision cannot use anything that lags: sleeping while a button is
+// held arms a level wake that is already satisfied.
+bool ButtonManager::anyRawDown() const {
   for (uint8_t i = 0; i < kButtonCount; ++i) {
-    if (states[i].lastDown) {
+    if (digitalRead(states[i].pin) == LOW) {
       return true;
     }
   }
