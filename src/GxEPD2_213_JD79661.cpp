@@ -127,7 +127,7 @@ void GxEPD2_213_JD79661::writeImagePartToPrevious(const uint8_t bitmap[], int16_
 }
 
 void GxEPD2_213_JD79661::_writeImagePart(uint8_t command, const uint8_t bitmap[], int16_t x_part, int16_t y_part, int16_t w_bitmap, int16_t h_bitmap,
-                                     int16_t x, int16_t y, int16_t w, int16_t h, bool invert, bool mirror_y, bool pgm)
+                                      int16_t x, int16_t y, int16_t w, int16_t h, bool invert, bool mirror_y, bool pgm)
 {
   if (_initial_write) writeScreenBuffer(); // initial full screen buffer clean
   delay(1); // yield() to avoid WDT on ESP8266 and ESP32
@@ -297,8 +297,19 @@ void GxEPD2_213_JD79661::hibernate()
 // The JD79661 addresses a partial window with 0x83, not the UC8151 0x90 / 0x91 / 0x92 trio the
 // JD79653A sibling uses. Byte layout and trailing mode flag are from GxEPD2's own JD79661
 // driver, epd4c/GxEPD2_213c_GDEY0213F51.
+//
+// The panel is initialized with PSR 0xF7 (bit2=1: source shift direction reversed), which
+// mirrors the controller's X axis. GxEPD2_BW's _reverse flag only compensates for gate scan
+// direction (Y axis), not source shift direction (X axis). We must mirror X coordinates here
+// to cancel the panel's hardware mirroring.
 void GxEPD2_213_JD79661::_setPartialRamArea(uint16_t x, uint16_t y, uint16_t w, uint16_t h, bool partial_mode)
 {
+  // Mirror X to compensate for panel's source shift direction reversal (PSR bit2=1).
+  // Controller X=0 is physical right, X=WIDTH-1 is physical left.
+  // Transform: x' = WIDTH - x - w, so panel mirroring maps it back to [x, x+w-1].
+  if (w > 0 && x < WIDTH) {
+    x = WIDTH - x - w;
+  }
   uint16_t xe = (x + w - 1) | 0x0007; // byte boundary inclusive (last byte)
   uint16_t ye = y + h - 1;
   x &= 0xFFF8; // byte boundary

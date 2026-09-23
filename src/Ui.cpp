@@ -127,7 +127,12 @@ void uiDrawReader(EpdDisplay& display, const ReaderView& view, bool partial) {
   int16_t lineBaselineY = r.contentY + 2 - sampleY1;
 
   if (partial) {
-    display.setPartialWindow(r.contentX, r.contentY, r.contentW, r.height - r.contentY);
+    // Cover full display width (0..WIDTH_VISIBLE-1) and height to avoid ghosting on
+    // panel edges. The JD79661 panel has PSR bit2=1 (source shift reversed), mirroring
+    // controller X. Logical left maps to controller right. A partial window covering only
+    // the content area (with margins) leaves the leftmost visible pixels (which map to
+    // controller right edge) unrefreshed during partial updates, causing ghosting.
+    display.setPartialWindow(0, 0, r.width, r.height);
   } else {
     display.setFullWindow();
   }
@@ -243,7 +248,9 @@ void uiDrawWifiOff(EpdDisplay& display) {
 void uiDrawWifiSettings(EpdDisplay& display, bool active, const String& ip, const String& ssid, const String& password, uint32_t uptimeMs, size_t clients, bool partial) {
   const UiLayout& r = layout;
   if (partial) {
-    display.setPartialWindow(r.contentX, r.contentY, r.contentW, r.contentH);
+    // Cover full display height (maps to full controller width 128px) to avoid ghosting
+    // on the rightmost 6px of controller memory (WIDTH=128, WIDTH_VISIBLE=122).
+    display.setPartialWindow(r.contentX, 0, r.contentW, r.height);
   } else {
     display.setFullWindow();
   }
