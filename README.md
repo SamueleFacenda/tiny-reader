@@ -210,13 +210,9 @@ See the source files for the screen flow and button mapping.
 <!-- ROADMAP -->
 ## Roadmap
 
-- Improve the library and book navigation flow.
-- Refine the Wi-Fi user interface.
 - Add a dedicated sleep-screen experience.
 - Improve battery status reporting when a usable ADC input is available.
-- Update only the necessary parts of the screen during Wi-Fi uptime refreshes.
 - Evaluate compressed book storage to reduce flash usage.
-- Reduce friction in navigation and return paths between screens.
 
 See the [open issues](https://github.com/SamueleFacenda/tiny-reader/issues) for the current list of planned work.
 
