@@ -199,7 +199,7 @@ several pages ahead in one refresh.
 makes visible.
 5. Let the device enter deep sleep when idle to preserve battery life. Between page turns it
 already drops into light sleep, waking on a button.
-6. Wake from the deep sleep using the `home` button.
+6. Wake from the deep sleep using the central button.
 
 See the source files for the screen flow and button mapping.
 
