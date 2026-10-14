@@ -88,6 +88,12 @@ namespace Config {
   // How many page positions to keep for backwards navigation
   constexpr size_t READER_HISTORY_MAX = 64;
 
+  // Opt-in compressed books (TRZ): the upload page compresses, the reader
+  // decompresses one chunk at a time into PSRAM. The cache holds two chunks,
+  // so a page window straddling a chunk boundary costs no third decompress.
+  constexpr uint32_t TRZ_MAX_CHUNK_BYTES = 900000; // bzip2's largest block
+  constexpr uint8_t TRZ_CACHE_SLOTS = 2;
+
   // Battery (set pin to valid ADC input to enable)
   constexpr int BATTERY_ADC_PIN = -1;
   constexpr float BATTERY_ADC_REF = 3.3f;

@@ -8,6 +8,8 @@
 #include "src/Ui.h"
 #include "src/WebPortal.h"
 
+#include "src/BookFile.h"
+
 #include <esp_sleep.h>
 #include <esp_system.h>
 
@@ -24,7 +26,7 @@ enum class ScreenId : uint8_t {
 };
 
 struct ReaderState {
-  File file;
+  BookFile file;   // a plain file, or a compressed book seen as plain text
   String path;
   size_t size = 0;
   uint32_t pagePos = 0;
@@ -126,8 +128,8 @@ static size_t readPageAt(uint32_t pos) {
     return 0;
   }
   reader.file.seek(pos);
-  int bytesRead = reader.file.read(reinterpret_cast<uint8_t*>(pageBuffer), sizeof(pageBuffer));
-  return (bytesRead > 0) ? static_cast<size_t>(bytesRead) : 0;
+  size_t bytesRead = reader.file.read(reinterpret_cast<uint8_t*>(pageBuffer), sizeof(pageBuffer));
+  return bytesRead;
 }
 
 // Where the page starting at pos would end, without drawing anything.
@@ -203,12 +205,9 @@ static bool isMenuScreen(ScreenId target) {
 }
 
 static void openBook(const String& path, bool resetPos) {
-  if (reader.file) {
-    reader.file.close();
-  }
   reader.path = storageNormalizeBookPath(path);
-  reader.file = LittleFS.open(reader.path, "r");
-  if (!reader.file) {
+  // BookFile::open closes any book already held, so reopening in place is safe.
+  if (!reader.file.open(reader.path)) {
     Serial.printf("Failed to open book: %s\n", reader.path.c_str());
     reader.size = 0;
     return;
@@ -514,6 +513,9 @@ void setup() {
   Serial.printf("Filesystem: %u of %u bytes used\n",
                 static_cast<unsigned>(stats.usedBytes),
                 static_cast<unsigned>(stats.totalBytes));
+  // Zero means the build lacks PSRAM=opi: compressed books will say so on
+  // open, this line is the early warning.
+  Serial.printf("PSRAM: %u bytes\n", static_cast<unsigned>(ESP.getPsramSize()));
 
   String current = storageGetCurrentBook();
   bool wokeFromSleep = (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0);
