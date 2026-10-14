@@ -5,14 +5,15 @@
 # Usage: build-bundle.sh <compressjs-lib-dir> <output.js>
 #
 # The lib dir holds the following files, unmodified, from
-# https://github.com/cscott/compressjs (lib/):
-#   freeze.js Stream.js Util.js BitStream.js CRC32.js
-#   HuffmanAllocator.js BWT.js Bzip2.js
+# https://github.com/cscott/compressjs (lib/), pinned in flake.nix:
+#   nix build .#compressjs -o compressjs && <this> compressjs/lib bundle.js
+# Files: freeze.js Stream.js Util.js BitStream.js CRC32.js
+#        HuffmanAllocator.js BWT.js Bzip2.js
 #
-# Minify the result (nix shell nixpkgs#nodePackages.terser -c terser ...) and
-# embed it with embed-header.sh. Verify the exact artifact that ships: build
-# a container with it (see make-trz.js in the same spirit as the upload page)
-# and decompress with system bzip2 and the host test.
+# Minify the result (nix shell nixpkgs#terser -c terser ...) and embed it
+# with embed-header.sh. Verify the exact artifact that ships: build a
+# container with it in node and decompress with system bzip2 and the host
+# test against the flake's libbz2.
 set -e
 SRC=$1
 OUT=$2

@@ -37,7 +37,10 @@ openscad -o model.stl tiny_reader_2-13_case.scad        # what CI runs
   `nix develop` or direnv is enough. **If the screen stays blank and the serial log is nothing but
   repeating `rst:0x3 (RTC_SW_SYS_RST)` with no app output, this file is missing.**
 - Libraries live in `flake.nix` under `wrapArduinoCLI { libraries = ... }`, not vendored. Platform
-  pinned to `2.0.10`.
+  pinned to `2.0.10`. libbz2 flows through the same list: `packages.bz2-library` wraps nixpkgs'
+  hash-pinned bzip2 tarball as an Arduino library (`BZip2`, referenced via `#include <bzlib.h>` —
+  arduino-cli compiles a library only once its header is included). Only the decompression entry
+  points are referenced; `--gc-sections` drops the rest of libbz2 from the binary.
 - CI only checks that the sketch compiles and the SCAD renders: no host build, no committed test.
 - `.pio/` and `.vscode/` are stale PlatformIO leftovers, gitignored. Not build config.
 
@@ -54,10 +57,10 @@ dispatches to, and the sleep policy. The `src/` modules stay dumb:
 - `BookFile.{h,cpp}` — File-like view over a stored book: plain files pass through, a TRZ
   compressed container presents its uncompressed byte stream. `TrzFormat.h` — the container
   layout, header-only and host-testable like TextWrap. `TrzDecode.h` — one-chunk bzip2 decode
-  through the vendored decoder, PSRAM-allocated on device.
-- `bzip2/` — libbz2 1.0.8, unmodified. Only decompression is referenced; `--gc-sections` drops
-  the rest. `Bzip2Js.h` — generated compressjs bundle (LGPL-2.1+), served at `/bz.js`. Regenerate
-  both with `tools/trz/build-bundle.sh` + `tools/trz/embed-header.sh`; do not hand-edit.
+  through the flake's libbz2 library, PSRAM-allocated on device.
+- `Bzip2Js.h` — generated compressjs bundle (LGPL-2.1+), served at `/bz.js`. The bundle's source is
+  pinned in `flake.nix` (`packages.compressjs`); regenerate with `nix build .#compressjs` +
+  `tools/trz/build-bundle.sh` + minify + `tools/trz/embed-header.sh`. Do not hand-edit.
 - `Ui.cpp` — all GxEPD2 drawing, layouts, every screen. `Storage.cpp` — LittleFS books under
   `/books`, positions, stats. `Input.cpp` — `ButtonManager`. `WebPortal.cpp` — SoftAP, web
   server, and the upload page's converter JS.
@@ -106,10 +109,11 @@ one decompress per ~400KB of text and a page window straddling a chunk boundary 
 one. A chunk that fails its CRC logs `CORRUPT` and yields a short read rather than garbage. The
 container layout is `src/TrzFormat.h` and the per-chunk decode is `src/TrzDecode.h`; both are
 host-testable, and nothing guards them automatically — check a change by (1) rebuilding the
-bundle with `tools/trz/build-bundle.sh`, minifying, and compressing a file with the exact
-generated artifact in node, verifying it with system `bzip2 -d`, and (2) compiling the host
-decoder roundtrip: the vendored `src/bzip2/*.c` (as C, gnu11) with a driver against `TrzFormat.h`
-that walks every boundary window and must reproduce the input byte for byte. The upload page's
+bundle from the pinned source (`nix build .#compressjs`), minifying, and compressing a file with
+the exact generated artifact in node, verifying it with system `bzip2 -d`, and (2) compiling the
+host decoder roundtrip: the flake's libbz2 (`nix build --print-out-paths .#bz2-library`, the
+`src/*.c` under it, as C gnu11) with a driver against `TrzFormat.h` that walks every boundary
+window and must reproduce the input byte for byte. The upload page's
 `buildTrz` is checked the same way as the converter JS: extract the `<script>` block from
 `WebPortal.cpp` and run it under node.
 

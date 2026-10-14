@@ -4,12 +4,12 @@
 // expand to exactly outLen bytes. The whole compressed chunk is already in
 // memory (its length comes from the container index, so the buffer is sized
 // exactly), which keeps this pure and host-testable: the device only swaps
-// the allocator for PSRAM, everything else is the vendored libbz2.
+// the allocator for PSRAM, everything else is the flake's libbz2 library.
 
 #include <stddef.h>
 #include <stdint.h>
 
-#include "bzip2/bzlib.h"
+#include <bzlib.h>
 
 #ifdef ARDUINO
 #include <Arduino.h>
