@@ -63,7 +63,13 @@ dispatches to, and the sleep policy. The `src/` modules stay dumb:
   `tools/trz/build-bundle.sh` + minify + `tools/trz/embed-header.sh`. Do not hand-edit.
 - `Ui.cpp` — all GxEPD2 drawing, layouts, every screen. `Storage.cpp` — LittleFS books under
   `/books`, positions, stats. `Input.cpp` — `ButtonManager`. `WebPortal.cpp` — SoftAP, web
-  server, and the upload page's converter JS.
+  server, routes; the page itself lives in `upload.h`.
+- `upload.h` — the portal's upload page: HTML framed by a raw-literal opener on its first line
+  and closer on its last, so WebPortal.cpp pastes it in with a plain `#include` at the
+  initializer. The `.h` name is load-bearing: the build carries only source types into its
+  copy of the sketch, so a `.html` include cannot resolve there. `#embed` (C++26) would be the
+  honest tool but needs GCC 15+; this toolchain is GCC 8.4, and a directive inside a string
+  literal never runs — which is why the delimiters live in the file instead.
 - `FreeSerif9pt8b.h` — generated merged font, glyphs `0x20`–`0xFE` (latin-1). Do not hand-edit.
 - `partitions.csv` — overrides the `PartitionScheme` option (`platform.txt` prebuild hooks give a
   sketch-folder CSV top priority). 1.25MB app, 6.62MB LittleFS, no OTA, 8MB total. **The data
@@ -115,7 +121,7 @@ host decoder roundtrip: the flake's libbz2 (`nix build --print-out-paths .#bz2-l
 `src/*.c` under it, as C gnu11) with a driver against `TrzFormat.h` that walks every boundary
 window and must reproduce the input byte for byte. The upload page's
 `buildTrz` is checked the same way as the converter JS: extract the `<script>` block from
-`WebPortal.cpp` and run it under node.
+`src/upload.h` and run it under node.
 
 **Input.** Presses are counted in an `ARDUINO_ISR_ATTR` falling-edge handler, so none are lost
 while the panel refreshes or a progress file is written. That handler must stay IRAM-resident (a
@@ -232,8 +238,10 @@ naming the *previous* upload, which would otherwise be deleted.
 **Book text is normalized before it arrives.** The device stores upload bytes verbatim: the
 transliteration to latin-1, paragraph unwrap, hyphen rejoin and indent stripping all happen in
 the upload page's JavaScript, using browser built-ins because the AP has no internet route —
-and so does the optional bzip2/TRZ step described above. A `curl` POST lands raw. Test it by
-extracting the `<script>` block and running `reflow`/`toLatin1`/`buildTrz` under node.
+and so does the optional bzip2/TRZ step described above. A `curl` POST lands raw. The keepbreaks
+checkbox opts out of the paragraph joining (poetry, lists): single newlines survive and runs of
+them collapse to one, which is also what the already-unwrapped path does. Test it by extracting
+the `<script>` block from `src/upload.h` and running `reflow`/`toLatin1`/`buildTrz` under node.
 
 **Font state.** The reader sets the custom GFX font and restores `setFont(nullptr)` plus
 `setTextWrap(true)`; menu screens assume that.
