@@ -14,15 +14,21 @@ Everything comes from the Nix flake. `.envrc` is `use flake`, so direnv users al
 
 ```sh
 nix develop                                            # or rely on direnv
-arduino-cli compile --fqbn esp32:esp32:esp32s3          # what CI runs
-arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3
+arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi   # what CI runs
+arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3:PSRAM=opi
 openscad -o model.stl tiny_reader_2-13_case.scad        # what CI runs
 ```
 
-- **No board options, deliberately.** Two files in the sketch root override the core instead,
-  because `platform.txt` prefers both over anything it would build itself: `partitions.csv` and
-  `bootloader.bin`. `app0` is sized to the stock `upload.maximum_size`, so the compile-time guard
-  stays exact without touching the board menu.
+- **One board option: `PSRAM=opi`.** The board carries 8MB of octal PSRAM, and compressed books
+  decompress into it — but PSRAM support is compiled into the core's prebuilt SDK variants, and
+  only the board menu selects the `qio_opi` one (`esp32s3.build.memory_type={build.boot}_{build.psram_type}`
+  in boards.txt); nothing in the sketch folder can swap the linked libs. Without the option a
+  compressed book fails to open with `TRZ needs PSRAM the build does not have`, and boot logs
+  `PSRAM: 0 bytes`. The menu does not touch the bootloader choice (`bootloader_qio_80m.elf`), so
+  the sketch-root bootloader override below stays valid. Everything else remains stock: two files
+  in the sketch root override the core, because `platform.txt` prefers both over anything it would
+  build itself: `partitions.csv` and `bootloader.bin`. `app0` is sized to the stock
+  `upload.maximum_size`, so the compile-time guard stays exact without touching the board menu.
 - **`bootloader.bin` is why the 8MB layout boots, and it is generated, not committed.** The
   bootloader the core builds declares 4MB, and since that image carries a SHA-256 digest esptool
   refuses to correct the field while flashing — so a table spanning the board's real 8MB makes the
@@ -45,6 +51,13 @@ dispatches to, and the sleep policy. The `src/` modules stay dumb:
 - `GxEPD2_213_JD79661.{h,cpp}` — GxEPD2 panel class for the second display module revision, the
   only first-party file that talks to a controller directly.
 - `TextWrap.h` — word wrapping, header-only, free of Arduino/GxEPD2 so it compiles on a host.
+- `BookFile.{h,cpp}` — File-like view over a stored book: plain files pass through, a TRZ
+  compressed container presents its uncompressed byte stream. `TrzFormat.h` — the container
+  layout, header-only and host-testable like TextWrap. `TrzDecode.h` — one-chunk bzip2 decode
+  through the vendored decoder, PSRAM-allocated on device.
+- `bzip2/` — libbz2 1.0.8, unmodified. Only decompression is referenced; `--gc-sections` drops
+  the rest. `Bzip2Js.h` — generated compressjs bundle (LGPL-2.1+), served at `/bz.js`. Regenerate
+  both with `tools/trz/build-bundle.sh` + `tools/trz/embed-header.sh`; do not hand-edit.
 - `Ui.cpp` — all GxEPD2 drawing, layouts, every screen. `Storage.cpp` — LittleFS books under
   `/books`, positions, stats. `Input.cpp` — `ButtonManager`. `WebPortal.cpp` — SoftAP, web
   server, and the upload page's converter JS.
@@ -74,6 +87,31 @@ last opened book. The path drops the extension, so same-named books in different
 atomically and truncating the live file is how progress used to be lost on a brownout. History is
 capped at `READER_HISTORY_MAX`, restored by `openBook` so `Prev` survives sleep, and entries past
 EOF are dropped on load.
+
+**Compressed books.** Compression is opt-in at upload, off by default: browsers have no native
+bzip2 (CompressionStreams is gzip/deflate only), so the portal serves a compressjs bundle
+(generated `src/Bzip2Js.h`, LGPL-2.1+) at `/bz.js`, and the checkbox makes the page slice the
+normalized text into 400,000-byte chunks, compress each as one independent byte-aligned bzip2
+stream (blockSize100k 4) and wrap them in a `TRZ1` container: fixed header, front index of u32
+compressed chunk offsets, then the streams, every multi-byte field little-endian. Chunk *i*
+expands to a derived byte count, so uncompressed offsets are never stored. A `curl` POST still
+lands raw, and compression never happens on-device: the uploader's browser has the CPU and the
+battery for it. `BookFile` detects the magic at open and presents the container as plain text, so
+pagination, progress files and history operate on plain text offsets either way — a `.pos` saved
+on a plain book resumes its compressed twin, since the filename (and thus the progress key) does
+not change. `readPageAt` and `uiMeasurePage` do not know compression exists. All decompression
+memory is PSRAM — bzip2's working set is blockSize100k·100k Int32s, which has no business in
+internal RAM — held in a two-chunk LRU cache (`Config::TRZ_CACHE_SLOTS`), so forward reading costs
+one decompress per ~400KB of text and a page window straddling a chunk boundary costs no third
+one. A chunk that fails its CRC logs `CORRUPT` and yields a short read rather than garbage. The
+container layout is `src/TrzFormat.h` and the per-chunk decode is `src/TrzDecode.h`; both are
+host-testable, and nothing guards them automatically — check a change by (1) rebuilding the
+bundle with `tools/trz/build-bundle.sh`, minifying, and compressing a file with the exact
+generated artifact in node, verifying it with system `bzip2 -d`, and (2) compiling the host
+decoder roundtrip: the vendored `src/bzip2/*.c` (as C, gnu11) with a driver against `TrzFormat.h`
+that walks every boundary window and must reproduce the input byte for byte. The upload page's
+`buildTrz` is checked the same way as the converter JS: extract the `<script>` block from
+`WebPortal.cpp` and run it under node.
 
 **Input.** Presses are counted in an `ARDUINO_ISR_ATTR` falling-edge handler, so none are lost
 while the panel refreshes or a progress file is written. That handler must stay IRAM-resident (a
@@ -189,9 +227,9 @@ naming the *previous* upload, which would otherwise be deleted.
 
 **Book text is normalized before it arrives.** The device stores upload bytes verbatim: the
 transliteration to latin-1, paragraph unwrap, hyphen rejoin and indent stripping all happen in
-the upload page's JavaScript, using browser built-ins because the AP has no internet route. A
-`curl` POST lands raw. Test it by extracting the `<script>` block and running `reflow`/`toLatin1`
-under node.
+the upload page's JavaScript, using browser built-ins because the AP has no internet route —
+and so does the optional bzip2/TRZ step described above. A `curl` POST lands raw. Test it by
+extracting the `<script>` block and running `reflow`/`toLatin1`/`buildTrz` under node.
 
 **Font state.** The reader sets the custom GFX font and restores `setFont(nullptr)` plus
 `setTextWrap(true)`; menu screens assume that.

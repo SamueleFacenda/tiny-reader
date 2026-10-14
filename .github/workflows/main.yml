@@ -48,7 +48,9 @@ jobs:
           python3 -c "b=open('bootloader.bin','rb').read(); assert b[3]>>4 == 3, 'bootloader does not declare 8MB'"
 
       - name: Build sketch
-        run: arduino-cli compile --verbose --fqbn esp32:esp32:esp32s3
+        # PSRAM=opi links the qio_opi prebuilt SDK: compressed books need the
+        # board's 8MB octal PSRAM, and only the board menu selects that SDK.
+        run: arduino-cli compile --verbose --fqbn esp32:esp32:esp32s3:PSRAM=opi
         
       - name: Build enclosure
         run: openscad -o model.stl tiny_reader_2-13_case.scad

@@ -7,6 +7,8 @@
 
 #include "Storage.h"
 
+#include "Bzip2Js.h"
+
 static WebServer server(80);
 static DNSServer dns;
 static bool active = false;
@@ -32,14 +34,19 @@ static const char* uploadPage = R"rawliteral(
 <style>
 body { font-family: sans-serif; margin: 2em auto; max-width: 30em; padding: 0 1em; }
 button { padding: 0.6em 1.2em; font-size: 1em; margin-top: 1em; }
+label { display: block; margin-top: 0.8em; }
 #status { min-height: 3em; }
 </style>
+<script src="/bz.js"></script>
 </head>
 <body>
 <h2>TinyReader Upload</h2>
 <p>Pick a plain text book. Your browser converts it to Latin-1 and reflows the
 paragraphs before sending, so the reader stores text it can display as is.</p>
 <input type="file" id="file" accept=".txt,text/plain">
+<label><input type="checkbox" id="compress"> Compress with bzip2: about 3x
+smaller on the reader, but a slower upload and some battery cost per page
+turn. Off by default.</label>
 <button id="go">Upload</button>
 <p id="status"></p>
 <script>
@@ -102,9 +109,55 @@ function toLatin1(text) {
 
 function say(msg) { document.getElementById('status').textContent = msg; }
 
+// TRZ container, the twin of src/TrzFormat.h: one independent bzip2 stream
+// per uncompressed chunk, a front index of chunk offsets, every multi-byte
+// field little-endian. The reader serves page reads from the chunk the index
+// points at, so positions stay plain text offsets.
+var TRZ_LEVEL = 4;      // bzip2 blockSize100k, recorded in the header
+var TRZ_CHUNK = 400000; // uncompressed bytes per chunk
+
+function w32(bytes, value, at) {
+  bytes[at] = value & 255;
+  bytes[at + 1] = (value >>> 8) & 255;
+  bytes[at + 2] = (value >>> 16) & 255;
+  bytes[at + 3] = (value >>> 24) & 255;
+}
+
+function buildTrz(bytes) {
+  var count = Math.max(1, Math.ceil(bytes.length / TRZ_CHUNK));
+  var chunks = [];
+  var offsets = [];
+  var cursor = 0;
+  for (var i = 0; i < count; i++) {
+    var slice = bytes.subarray(i * TRZ_CHUNK, Math.min((i + 1) * TRZ_CHUNK, bytes.length));
+    var out = [];
+    TrzBzip2.compressFile(slice, { writeByte: function (b) { out.push(b); } }, TRZ_LEVEL);
+    var chunk = new Uint8Array(out);
+    chunks.push(chunk);
+    offsets.push(cursor);
+    cursor += chunk.length;
+  }
+  var trz = new Uint8Array(20 + 4 * count + cursor);
+  trz[0] = 84; trz[1] = 82; trz[2] = 90; trz[3] = 49;   // "TRZ1"
+  trz[4] = 1;                                          // container version
+  trz[5] = TRZ_LEVEL;
+  w32(trz, TRZ_CHUNK, 8);
+  w32(trz, bytes.length, 12);
+  w32(trz, count, 16);
+  for (var j = 0; j < count; j++) { w32(trz, offsets[j], 20 + 4 * j); }
+  var at = 20 + 4 * count;
+  chunks.forEach(function (c) { trz.set(c, at); at += c.length; });
+  return trz;
+}
+
 async function upload() {
   var picked = document.getElementById('file').files[0];
   if (!picked) { say('Pick a file first.'); return; }
+  var compress = document.getElementById('compress').checked;
+  if (compress && typeof TrzBzip2 === 'undefined') {
+    say('The compressor failed to load; reload the page.');
+    return;
+  }
   say('Converting...');
   var buffer = await picked.arrayBuffer();
   var text;
@@ -114,14 +167,28 @@ async function upload() {
     text = new TextDecoder('iso-8859-1').decode(buffer);  // already converted
   }
   var bytes = toLatin1(reflow(text));
-  say('Uploading ' + bytes.length + ' bytes...');
+  var payload = bytes;
+  if (compress) {
+    say('Compressing ' + bytes.length + ' bytes... this can take a while');
+    await new Promise(function (r) { setTimeout(r, 30); });  // let the status paint
+    try {
+      payload = buildTrz(bytes);
+    } catch (e) {
+      say('Compression failed: ' + e.message);
+      return;
+    }
+  }
+  say((compress
+    ? 'Uploading ' + payload.length + ' of ' + bytes.length + ' bytes...'
+    : 'Uploading ' + bytes.length + ' bytes...'));
   var form = new FormData();
-  form.append('file', new Blob([bytes], {type: 'text/plain'}), picked.name);
+  form.append('file', new Blob([payload], {type: 'application/octet-stream'}), picked.name);
   try {
     var response = await fetch('/upload', {method: 'POST', body: form});
     var body = await response.text();
     say(response.ok
-      ? 'Stored ' + picked.name + ' (' + buffer.byteLength + ' -> ' + bytes.length + ' bytes)'
+      ? 'Stored ' + picked.name + ' (' + buffer.byteLength + ' -> ' + payload.length + ' bytes'
+        + (compress ? ', compressed' : '') + ')'
       : 'Failed: ' + body);
   } catch (e) {
     say('Failed: ' + e.message);
@@ -145,6 +212,11 @@ static void handleRoot() {
   // send_P streams straight from flash. send() would copy the whole page into a String
   // first, and the heap is at its most fragmented right after WiFi comes up.
   server.send_P(200, "text/html", uploadPage);
+}
+
+// The bzip2 compressor bundle, streamed from flash like the page itself.
+static void handleBzJs() {
+  server.send_P(200, "application/javascript", BZIP2_JS);
 }
 
 // Everything else, including the connectivity probes a desktop OS fires on join, is
@@ -319,6 +391,7 @@ bool webPortalStart(UploadCompleteCallback cb) {
     return false;
   }
   server.on("/", handleRoot);
+  server.on("/bz.js", HTTP_GET, handleBzJs);
   server.on("/upload", HTTP_POST, []() {}, handleUpload);
   server.onNotFound(handleNotFound);
   server.begin();
