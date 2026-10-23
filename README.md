@@ -138,11 +138,11 @@ The scad source is available here or the rendered stl can be downloaded [directl
      ```
 3. Compile the sketch with Arduino CLI
      ```sh
-     arduino-cli compile --fqbn esp32:esp32:esp32s3
+     arduino-cli compile --fqbn esp32:esp32:esp32s3:PSRAM=opi
      ```
 4. Flash the firmware to the board (port may vary)
     ```sh
-    arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3 --verbose 
+    arduino-cli upload -p /dev/ttyUSB0 --fqbn esp32:esp32:esp32s3:PSRAM=opi --verbose 
     ```
 
 The flake provides the Arduino CLI, ESP32 board packages, Python serial support, and OpenSCAD.
